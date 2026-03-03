@@ -1,4 +1,7 @@
 pub type Square = u8;
+pub type Bitboard = u64;
+
+pub const NO_SQUARE: Square = 64;
 
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -11,6 +14,15 @@ pub enum Piece {
     King = 5,
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Colour {
+    White = 0,
+    Black = 1,
+    Both = 2,
+}
+
+// --- Moves ---
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MoveFlag {
