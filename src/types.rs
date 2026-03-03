@@ -1,7 +1,16 @@
 pub type Square = u8;
 pub type Bitboard = u64;
 
-pub const NO_SQUARE: Square = 64;
+pub const EMPTY_SQUARE: Square = 12; // PieceCodes are indexed 0-11
+pub const NO_SQUARE: Square = 64; // Bitboards are indexed 0-63
+
+// --- Pieces ---
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Colour {
+    White = 0,
+    Black = 1,
+}
 
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -14,12 +23,52 @@ pub enum Piece {
     King = 5,
 }
 
-#[repr(u8)]
+#[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Colour {
-    White = 0,
-    Black = 1,
-    Both = 2,
+pub struct PieceCode(u8);
+
+impl PieceCode {
+    pub const EMPTY: Self = Self(EMPTY_SQUARE);
+
+    // Use bit 0-2 for piece type, bit 3 for colour
+    pub const fn new(colour: Colour, piece: Piece) -> Self {
+        Self((piece as u8) | ((colour as u8) << 3))
+    }
+
+    #[inline(always)]
+    pub const fn is_empty(self) -> bool {
+        self.0 == Self::EMPTY.0
+    }
+
+    #[inline(always)]
+    pub const fn colour(self) -> Option<Colour> {
+        if self.is_empty() {
+            return None;
+        }
+        // Bit 3 is the colour, 0 = white, 1 = black
+        if (self.0 & 0b1000) == 0 {
+            Some(Colour::White)
+        } else {
+            Some(Colour::Black)
+        }
+    }
+
+    #[inline(always)]
+    pub const fn piece(self) -> Option<Piece> {
+        if self.is_empty() {
+            return None;
+        }
+        // First 3 bits determine piece type
+        match self.0 & 0b111 {
+            0 => Some(Piece::Pawn),
+            1 => Some(Piece::Knight),
+            2 => Some(Piece::Bishop),
+            3 => Some(Piece::Rook),
+            4 => Some(Piece::Queen),
+            5 => Some(Piece::King),
+            _ => unreachable!(),
+        }
+    }
 }
 
 // --- Castling ---
