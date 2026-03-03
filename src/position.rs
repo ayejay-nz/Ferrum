@@ -1,4 +1,4 @@
-use crate::types::{Bitboard, Colour, Piece, Square};
+use crate::types::{Bitboard, Castling, Colour, Piece, Square};
 
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
@@ -10,6 +10,6 @@ pub struct Position {
     pub ep_square: Square,
     pub white_king_square: Square,
     pub black_king_square: Square,
-    pub castling_rights: u8,
+    pub castling_rights: Castling,
     pub halfmove_clock: u8,
 }

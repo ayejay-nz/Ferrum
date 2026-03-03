@@ -22,6 +22,75 @@ pub enum Colour {
     Both = 2,
 }
 
+// --- Castling ---
+const CASTLING_MASK: [u8; 64] = {
+    let mut masks: [u8; 64] = [0xF; 64];
+
+    masks[0] = !Castling::WQ; // a1 - white loses WQ
+    masks[7] = !Castling::WK; // h1 - white loses WK
+    masks[4] = !(Castling::WHITE_DEFAULT); // e1 - white loses BOTH
+
+    masks[56] = !Castling::BQ; // a8 - black loses BQ
+    masks[63] = !Castling::BK; // h8 - black loses BK
+    masks[60] = !(Castling::BLACK_DEFAULT); // e8 - black loses BOTH
+
+    masks
+};
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Castling(u8);
+
+impl Castling {
+    pub const WK: u8 = 1 << 0;
+    pub const WQ: u8 = 1 << 1;
+    pub const BK: u8 = 1 << 2;
+    pub const BQ: u8 = 1 << 3;
+
+    pub const WHITE_DEFAULT: u8 = Self::WK | Self::WQ;
+    pub const BLACK_DEFAULT: u8 = Self::BK | Self::BQ;
+
+    pub const DEFAULT: u8 = Self::WHITE_DEFAULT | Self::BLACK_DEFAULT;
+
+    pub const fn new(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    #[inline(always)]
+    pub fn update(&mut self, from: Square, to: Square) {
+        // AND the rights with the mask of both squares
+        // Handles:
+        // 1. King moving (loses both)
+        // 2. Rook move (loses one)
+        // 3. Rook captured (opponent loses one)
+        self.0 &= CASTLING_MASK[from as usize] & CASTLING_MASK[to as usize];
+    }
+
+    #[inline(always)]
+    pub fn can_white_ks(self) -> bool {
+        (self.0 & Castling::WK) != 0
+    }
+
+    #[inline(always)]
+    pub fn can_white_qs(self) -> bool {
+        (self.0 & Castling::WQ) != 0
+    }
+
+    #[inline(always)]
+    pub fn can_black_ks(self) -> bool {
+        (self.0 & Castling::BK) != 0
+    }
+
+    #[inline(always)]
+    pub fn can_black_qs(self) -> bool {
+        (self.0 & Castling::BQ) != 0
+    }
+}
+
 // --- Moves ---
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
