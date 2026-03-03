@@ -26,13 +26,13 @@ pub enum Colour {
 const CASTLING_MASK: [u8; 64] = {
     let mut masks: [u8; 64] = [0xF; 64];
 
-    masks[0] = !Castling::WQ; // a1 - white loses WQ
-    masks[7] = !Castling::WK; // h1 - white loses WK
-    masks[4] = !(Castling::WHITE_DEFAULT); // e1 - white loses BOTH
+    masks[0] = !Castling::WQ_BIT; // a1 - white loses WQ
+    masks[7] = !Castling::WK_BIT; // h1 - white loses WK
+    masks[4] = !(Castling::WK_BIT | Castling::WQ_BIT); // e1 - white loses BOTH
 
-    masks[56] = !Castling::BQ; // a8 - black loses BQ
-    masks[63] = !Castling::BK; // h8 - black loses BK
-    masks[60] = !(Castling::BLACK_DEFAULT); // e8 - black loses BOTH
+    masks[56] = !Castling::BQ_BIT; // a8 - black loses BQ
+    masks[63] = !Castling::BK_BIT; // h8 - black loses BK
+    masks[60] = !(Castling::BK_BIT | Castling::BQ_BIT); // e8 - black loses BOTH
 
     masks
 };
@@ -42,15 +42,18 @@ const CASTLING_MASK: [u8; 64] = {
 pub struct Castling(u8);
 
 impl Castling {
-    pub const WK: u8 = 1 << 0;
-    pub const WQ: u8 = 1 << 1;
-    pub const BK: u8 = 1 << 2;
-    pub const BQ: u8 = 1 << 3;
+    pub const WK_BIT: u8 = 1 << 0;
+    pub const WQ_BIT: u8 = 1 << 1;
+    pub const BK_BIT: u8 = 1 << 2;
+    pub const BQ_BIT: u8 = 1 << 3;
 
-    pub const WHITE_DEFAULT: u8 = Self::WK | Self::WQ;
-    pub const BLACK_DEFAULT: u8 = Self::BK | Self::BQ;
+    pub const WK: Self = Self(Self::WK_BIT);
+    pub const WQ: Self = Self(Self::WQ_BIT);
+    pub const BK: Self = Self(Self::BK_BIT);
+    pub const BQ: Self = Self(Self::BQ_BIT);
 
-    pub const DEFAULT: u8 = Self::WHITE_DEFAULT | Self::BLACK_DEFAULT;
+    pub const NONE: Self = Self(0);
+    pub const DEFAULT: Self = Self(Self::WK_BIT | Self::WQ_BIT | Self::BK_BIT | Self::BQ_BIT);
 
     pub const fn new(bits: u8) -> Self {
         Self(bits)
@@ -72,22 +75,22 @@ impl Castling {
 
     #[inline(always)]
     pub fn can_white_ks(self) -> bool {
-        (self.0 & Castling::WK) != 0
+        (self.0 & Self::WK_BIT) != 0
     }
 
     #[inline(always)]
     pub fn can_white_qs(self) -> bool {
-        (self.0 & Castling::WQ) != 0
+        (self.0 & Self::WQ_BIT) != 0
     }
 
     #[inline(always)]
     pub fn can_black_ks(self) -> bool {
-        (self.0 & Castling::BK) != 0
+        (self.0 & Self::BK_BIT) != 0
     }
 
     #[inline(always)]
     pub fn can_black_qs(self) -> bool {
-        (self.0 & Castling::BQ) != 0
+        (self.0 & Self::BQ_BIT) != 0
     }
 }
 
