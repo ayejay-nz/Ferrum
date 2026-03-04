@@ -17,8 +17,8 @@ pub struct Position {
 impl Position {
     pub fn new() -> Self {
         Self {
-            pieces: [[0; 6]; 2],
-            occupancy: [0; 3],
+            pieces: [[Bitboard::new(0); 6]; 2],
+            occupancy: [Bitboard::new(0); 3],
             mailbox: [PieceCode::EMPTY; 64],
             zkey: 0,
             fullmove_counter: 0,

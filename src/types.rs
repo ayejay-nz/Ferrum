@@ -1,5 +1,3 @@
-pub type Bitboard = u64;
-
 // --- Squares ---
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -58,6 +56,28 @@ impl Square {
 impl Default for Square {
     fn default() -> Self {
         Self::NONE
+    }
+}
+
+// --- Bitboards ---
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Bitboard(u64);
+
+impl Bitboard {
+    #[inline(always)]
+    pub const fn new(bb: u64) -> Self {
+        Self(bb)
+    }
+
+    #[inline(always)]
+    pub const fn set_square(&mut self, square: Square) {
+        self.0 |= 1 << square.u8()
+    }
+
+    #[inline(always)]
+    pub const fn clear_square(&mut self, square: Square) {
+        self.0 &= !(1 << square.u8())
     }
 }
 
