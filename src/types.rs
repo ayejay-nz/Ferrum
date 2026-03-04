@@ -150,7 +150,7 @@ impl PieceCode {
             return None;
         }
         // Bits 1-3 determine piece type
-        match (self.0 >> 1) & 0b1110 {
+        match (self.0 >> 1) & 0b0111 {
             0 => Some(Piece::Pawn),
             1 => Some(Piece::Knight),
             2 => Some(Piece::Bishop),
