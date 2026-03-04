@@ -160,6 +160,25 @@ impl PieceCode {
             _ => unreachable!(),
         }
     }
+
+    pub fn from_char(c: char) -> Option<Self> {
+        let colour = if c.is_uppercase() {
+            Colour::White
+        } else {
+            Colour::Black
+        };
+        let piece = match c.to_ascii_lowercase() {
+            'p' => Piece::Pawn,
+            'n' => Piece::Knight,
+            'b' => Piece::Bishop,
+            'r' => Piece::Rook,
+            'q' => Piece::Queen,
+            'k' => Piece::King,
+            _ => return None,
+        };
+
+        return Some(PieceCode::new(colour, piece));
+    }
 }
 
 // --- Castling ---
