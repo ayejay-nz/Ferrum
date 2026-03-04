@@ -2,5 +2,6 @@ mod position;
 mod types;
 
 fn main() {
-    println!("Hello, world!");
+    let pos = position::Position::load_fen(position::DEFAULT_FEN);
+    position::Position::display(pos);
 }

@@ -1,5 +1,7 @@
 use crate::types::{Bitboard, Castling, Colour, Piece, PieceCode, Square};
 
+pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
@@ -121,5 +123,36 @@ impl Position {
         position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap();
 
         return position;
+    }
+
+    pub fn display(self) {
+        let piece_symbols = [
+            ['♟', '♞', '♝', '♜', '♛', '♚'], // These are technically black pieces according to ASCII
+            ['♙', '♘', '♗', '♖', '♕', '♔'], // But I'm not falling for that propaganda
+        ];
+
+        println!("\n  +-----------------+");
+
+        // We want to print white on the bottom, so start with 8th rank
+        for rank in (0..8).rev() {
+            print!("{} | ", rank + 1);
+
+            for file in 0..8 {
+                let square = Square::from_coords(rank, file);
+                let piece = self.mailbox[square.idx()];
+
+                if piece.is_empty() {
+                    print!(". ");
+                } else {
+                    let symbol =
+                        piece_symbols[piece.colour().unwrap().idx()][piece.piece().unwrap().idx()];
+                    print!("{} ", symbol);
+                }
+            }
+            println!("|");
+        }
+
+        println!("  +-----------------+");
+        println!("    a b c d e f g h");
     }
 }
