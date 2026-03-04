@@ -87,9 +87,10 @@ pub struct PieceCode(u8);
 impl PieceCode {
     pub const EMPTY: Self = Self(12);
 
-    // Use bit 0-2 for piece type, bit 3 for colour
+    // Use bit 1-3 for piece type, bit 0 for (inverted) colour, i.e. 0 = B, 1 = W
+    // This sets the PieceCode according to the polyglot book format encoding
     pub const fn new(colour: Colour, piece: Piece) -> Self {
-        Self((piece as u8) | ((colour as u8) << 3))
+        Self((piece as u8) << 1 | ((colour as u8) ^ 0b1))
     }
 
     #[inline(always)]
@@ -102,8 +103,8 @@ impl PieceCode {
         if self.is_empty() {
             return None;
         }
-        // Bit 3 is the colour, 0 = white, 1 = black
-        if (self.0 & 0b1000) == 0 {
+        // Bit 0 is the colour, 0 = black, 1 = white
+        if (self.0 & 0b0001) == 1 {
             Some(Colour::White)
         } else {
             Some(Colour::Black)
@@ -115,8 +116,8 @@ impl PieceCode {
         if self.is_empty() {
             return None;
         }
-        // First 3 bits determine piece type
-        match self.0 & 0b111 {
+        // Bits 1-3 determine piece type
+        match (self.0 >> 1) & 0b1110 {
             0 => Some(Piece::Pawn),
             1 => Some(Piece::Knight),
             2 => Some(Piece::Bishop),
