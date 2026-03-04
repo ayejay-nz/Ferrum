@@ -69,6 +69,13 @@ pub enum Colour {
     Black = 1,
 }
 
+impl Colour {
+    #[inline(always)]
+    pub const fn idx(self) -> usize {
+        self as usize
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Piece {
@@ -78,6 +85,12 @@ pub enum Piece {
     Rook = 3,
     Queen = 4,
     King = 5,
+}
+
+impl Piece {
+    pub const fn idx(self) -> usize {
+        self as usize
+    }
 }
 
 #[repr(transparent)]
