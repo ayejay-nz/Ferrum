@@ -1,8 +1,65 @@
-pub type Square = u8;
 pub type Bitboard = u64;
 
-pub const EMPTY_SQUARE: Square = 12; // PieceCodes are indexed 0-11
-pub const NO_SQUARE: Square = 64; // Bitboards are indexed 0-63
+// --- Squares ---
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Square(u8);
+
+impl Square {
+    pub const NONE: Self = Self(64);
+
+    #[inline(always)]
+    pub const fn new(sq: u8) -> Self {
+        Self(sq)
+    }
+
+    #[inline(always)]
+    pub const fn rank(self) -> u8 {
+        self.0 >> 3
+    }
+
+    #[inline(always)]
+    pub const fn file(self) -> u8 {
+        self.0 & 7
+    }
+
+    #[inline(always)]
+    pub const fn from_coords(rank: u8, file: u8) -> Self {
+        // (rank * 8) + file
+        Self((rank << 3) | (file & 7))
+    }
+
+    #[inline(always)]
+    pub const fn is_none(self) -> bool {
+        self.0 == Self::NONE.0
+    }
+
+    #[inline(always)]
+    pub const fn u8(self) -> u8 {
+        self.0 as u8
+    }
+
+    #[inline(always)]
+    pub const fn u16(self) -> u16 {
+        self.0 as u16
+    }
+
+    #[inline(always)]
+    pub const fn idx(self) -> usize {
+        self.0 as usize
+    }
+
+    #[inline(always)]
+    pub const fn bit(self) -> u64 {
+        1u64 << self.0
+    }
+}
+
+impl Default for Square {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
 
 // --- Pieces ---
 #[repr(u8)]
@@ -28,7 +85,7 @@ pub enum Piece {
 pub struct PieceCode(u8);
 
 impl PieceCode {
-    pub const EMPTY: Self = Self(EMPTY_SQUARE);
+    pub const EMPTY: Self = Self(12);
 
     // Use bit 0-2 for piece type, bit 3 for colour
     pub const fn new(colour: Colour, piece: Piece) -> Self {
@@ -119,7 +176,7 @@ impl Castling {
         // 1. King moving (loses both)
         // 2. Rook move (loses one)
         // 3. Rook captured (opponent loses one)
-        self.0 &= CASTLING_MASK[from as usize] & CASTLING_MASK[to as usize];
+        self.0 &= CASTLING_MASK[from.idx()] & CASTLING_MASK[to.idx()];
     }
 
     #[inline(always)]
@@ -177,17 +234,17 @@ impl Move {
 
     #[inline(always)]
     pub fn new(from: Square, to: Square, flag: MoveFlag) -> Self {
-        Self((from as u16) | ((to as u16) << 6) | ((flag as u16) << 12))
+        Self(from.u16() | to.u16() << 6 | (flag as u16) << 12)
     }
 
     #[inline(always)]
     pub fn from(self) -> Square {
-        (self.0 & 0x3F) as Square
+        Square::new((self.0 & 0x3F) as u8)
     }
 
     #[inline(always)]
     pub fn to(self) -> Square {
-        ((self.0 >> 6) & 0x3F) as Square
+        Square::new(((self.0 >> 6) & 0x3F) as u8)
     }
 
     #[inline(always)]

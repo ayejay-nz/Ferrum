@@ -1,4 +1,4 @@
-use crate::types::{Bitboard, Castling, Colour, NO_SQUARE, PieceCode, Square};
+use crate::types::{Bitboard, Castling, Colour, PieceCode, Square};
 
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
@@ -23,9 +23,9 @@ impl Position {
             zkey: 0,
             fullmove_counter: 0,
             side_to_move: Colour::White,
-            ep_square: NO_SQUARE,
-            white_king_square: NO_SQUARE,
-            black_king_square: NO_SQUARE,
+            ep_square: Square::NONE,
+            white_king_square: Square::NONE,
+            black_king_square: Square::NONE,
             castling_rights: Castling::DEFAULT,
             halfmove_clock: 0,
         }
