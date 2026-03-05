@@ -128,7 +128,7 @@ impl Position {
         return position;
     }
 
-    pub fn display(self) {
+    pub fn display(&self) {
         let piece_symbols = [
             ['♟', '♞', '♝', '♜', '♛', '♚'], // These are technically black pieces according to ASCII
             ['♙', '♘', '♗', '♖', '♕', '♔'], // But I'm not falling for that propaganda

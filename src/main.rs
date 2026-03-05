@@ -3,5 +3,5 @@ mod types;
 
 fn main() {
     let pos = position::Position::load_fen(position::DEFAULT_FEN);
-    position::Position::display(pos);
+    pos.display();
 }
