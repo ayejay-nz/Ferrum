@@ -375,4 +375,9 @@ impl Move {
         // Check if bits are 0010 or 0011
         (self.flag() & 0b1110) == 0b0010
     }
+
+    #[inline(always)]
+    pub fn is_double_push(self) -> bool {
+        self.flag() == 0b0001
+    }
 }
