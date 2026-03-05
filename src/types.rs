@@ -351,6 +351,21 @@ impl Move {
     }
 
     #[inline(always)]
+    pub fn is_ep_capture(self) -> bool {
+        self.flag() == 0b0101
+    }
+
+    #[inline(always)]
+    pub fn get_ep_pawn_square(self) -> Square {
+        // Ep capture will only happen on rank 5 for white and rank 2 for black
+        match self.to().rank() {
+            5 => Square::new(self.to().u8() - 8),
+            2 => Square::new(self.to().u8() + 8),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline(always)]
     pub fn is_promotion(self) -> bool {
         (self.flag() & 0b1000) != 0
     }
