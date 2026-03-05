@@ -181,6 +181,38 @@ impl PieceCode {
     }
 }
 
+// --- Mailbox ---
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Mailbox([PieceCode; 64]);
+
+impl Mailbox {
+    #[inline(always)]
+    pub const fn new() -> Self {
+        Self([PieceCode::EMPTY; 64])
+    }
+
+    #[inline(always)]
+    pub const fn set_square(&mut self, square: Square, pc: PieceCode) {
+        self.0[square.idx()] = pc
+    }
+
+    #[inline(always)]
+    pub const fn clear_square(&mut self, square: Square) {
+        self.0[square.idx()] = PieceCode::EMPTY
+    }
+
+    #[inline(always)]
+    pub const fn piece_code_at(&self, square: Square) -> PieceCode {
+        self.0[square.idx()]
+    }
+
+    #[inline(always)]
+    pub const fn piece_at(&self, square: Square) -> Option<Piece> {
+        self.piece_code_at(square).piece()
+    }
+}
+
 // --- Castling ---
 const CASTLING_MASK: [u8; 64] = {
     let mut masks: [u8; 64] = [0xF; 64];

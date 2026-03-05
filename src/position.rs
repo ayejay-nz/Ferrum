@@ -1,11 +1,11 @@
-use crate::types::{Bitboard, Castling, Colour, Piece, PieceCode, Square};
+use crate::types::{Bitboard, Castling, Colour, Mailbox, Piece, PieceCode, Square};
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
-    pub mailbox: [PieceCode; 64],
+    pub mailbox: Mailbox,
     pub zkey: u64,
     pub fullmove_counter: u16,
     pub side_to_move: Colour,
@@ -21,7 +21,7 @@ impl Position {
         Self {
             pieces: [[Bitboard::new(0); 6]; 2],
             occupancy: [Bitboard::new(0); 3],
-            mailbox: [PieceCode::EMPTY; 64],
+            mailbox: Mailbox::new(),
             zkey: 0,
             fullmove_counter: 0,
             side_to_move: Colour::White,
@@ -38,7 +38,9 @@ impl Position {
         self.pieces[colour.idx()][piece.idx()].set_square(square);
         self.occupancy[colour.idx()].set_square(square);
         self.occupancy[2].set_square(square);
-        self.mailbox[square.idx()] = PieceCode::new(colour, piece);
+
+        let pc = PieceCode::new(colour, piece);
+        self.mailbox.set_square(square, pc);
 
         // Set white/black king squares
         if piece == Piece::King {
@@ -54,7 +56,8 @@ impl Position {
         self.pieces[colour.idx()][piece.idx()].clear_square(square);
         self.occupancy[colour.idx()].clear_square(square);
         self.occupancy[2].clear_square(square);
-        self.mailbox[square.idx()] = PieceCode::EMPTY;
+        self.mailbox.clear_square(square);
+    }
     }
 
     pub fn load_fen(fen: &str) -> Self {
@@ -139,7 +142,7 @@ impl Position {
 
             for file in 0..8 {
                 let square = Square::from_coords(rank, file);
-                let piece = self.mailbox[square.idx()];
+                let piece = self.mailbox.piece_code_at(square);
 
                 if piece.is_empty() {
                     print!(". ");
