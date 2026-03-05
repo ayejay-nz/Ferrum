@@ -94,6 +94,14 @@ impl Colour {
     pub const fn idx(self) -> usize {
         self as usize
     }
+
+    #[inline(always)]
+    pub const fn opposite(self) -> Colour {
+        match self {
+            Self::White => Self::Black,
+            Self::Black => Self::White,
+        }
+    }
 }
 
 #[repr(u8)]
