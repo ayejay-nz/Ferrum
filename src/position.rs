@@ -1,4 +1,4 @@
-use crate::types::{Bitboard, Castling, Colour, Mailbox, Piece, PieceCode, Square};
+use crate::types::{Bitboard, Castling, Colour, Mailbox, Move, Piece, PieceCode, Square};
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -58,6 +58,61 @@ impl Position {
         self.occupancy[2].clear_square(square);
         self.mailbox.clear_square(square);
     }
+
+    #[inline(always)]
+    pub fn make_move(&mut self, mv: Move) {
+        self.halfmove_clock += 1;
+        if self.side_to_move == Colour::Black {
+            self.fullmove_counter += 1;
+        }
+
+        let colour = self.side_to_move;
+        let from = mv.from();
+        let to = mv.to();
+        let piece = self.mailbox.piece_at(from).unwrap();
+
+        self.castling_rights.update(from, to);
+
+        // If promotion occurs we need to set the promoted piece bitboard and mailbox code
+        let to_piece = mv.promotion_piece().unwrap_or(piece);
+
+        // Remove captured piece and update halfmove clock
+        if mv.is_capture() {
+            self.halfmove_clock = 0;
+
+            // Find the captured piece -- ep piece is not always on `to` square
+            let capture_square = if mv.is_ep_capture() {
+                mv.get_ep_pawn_square()
+            } else {
+                to
+            };
+            let captured_piece = self.mailbox.piece_at(capture_square).unwrap();
+
+            self.remove_piece(colour.opposite(), captured_piece, capture_square);
+        }
+
+        // Move the piece
+        self.remove_piece(colour, piece, from);
+        self.place_piece(colour, to_piece, to);
+
+        // Move rook if it was a castling move
+        if let Some(side) = mv.castle_type() {
+            let (rook_from, rook_to) = Castling::get_rook_squares_from_castle(colour, side);
+            self.remove_piece(colour, Piece::Rook, rook_from);
+            self.place_piece(colour, Piece::Rook, rook_to);
+        }
+
+        // Pawn move resets halfmove clock
+        if piece == Piece::Pawn {
+            self.halfmove_clock = 0;
+
+            // If move was a double pawn move, update ep square
+            if mv.is_double_push() {
+                self.ep_square = Square::new((from.u8() + to.u8()) >> 1);
+            }
+        }
+
+        self.side_to_move = self.side_to_move.opposite();
     }
 
     pub fn load_fen(fen: &str) -> Self {
