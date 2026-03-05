@@ -236,6 +236,13 @@ const CASTLING_MASK: [u8; 64] = {
     masks
 };
 
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum CastlingType {
+    Kingside = 0,
+    Queenside = 1,
+}
+
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Castling(u8);
@@ -270,6 +277,17 @@ impl Castling {
         // 2. Rook move (loses one)
         // 3. Rook captured (opponent loses one)
         self.0 &= CASTLING_MASK[from.idx()] & CASTLING_MASK[to.idx()];
+    }
+
+    #[inline(always)]
+    pub fn get_rook_squares_from_castle(colour: Colour, side: CastlingType) -> (Square, Square) {
+        // Return a tuple of the rooks move as (from, to) squares
+        match (colour, side) {
+            (Colour::White, CastlingType::Kingside) => (Square::new(7), Square::new(5)), // h1 -> f1
+            (Colour::White, CastlingType::Queenside) => (Square::new(0), Square::new(3)), // a1 -> d1
+            (Colour::Black, CastlingType::Kingside) => (Square::new(63), Square::new(61)), // h8 -> f8
+            (Colour::Black, CastlingType::Queenside) => (Square::new(56), Square::new(59)), // a8 ->
+        }
     }
 
     #[inline(always)]
@@ -387,8 +405,16 @@ impl Move {
 
     #[inline(always)]
     pub fn is_castle(self) -> bool {
-        // Check if bits are 0010 or 0011
-        (self.flag() & 0b1110) == 0b0010
+        self.castle_type().is_some()
+    }
+
+    #[inline(always)]
+    pub fn castle_type(self) -> Option<CastlingType> {
+        match self.flag() {
+            x if x == MoveFlag::KingCastle as u8 => Some(CastlingType::Kingside),
+            x if x == MoveFlag::QueenCastle as u8 => Some(CastlingType::Queenside),
+            _ => None,
+        }
     }
 
     #[inline(always)]
