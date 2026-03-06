@@ -135,6 +135,54 @@ impl Position {
         self.side_to_move = self.side_to_move.opposite();
     }
 
+    #[inline(always)]
+    pub fn undo_move(&mut self, mv: Move, prev: &StateInfo) {
+        self.side_to_move = self.side_to_move.opposite();
+
+        self.halfmove_clock = prev.halfmove_clock;
+        self.fullmove_counter = prev.fullmove_counter;
+        self.castling_rights = prev.castling_rights;
+        self.ep_square = prev.ep_square;
+        self.zkey = prev.zkey;
+
+        let colour = self.side_to_move;
+        let from = mv.from();
+        let to = mv.to();
+        let mut piece = self.mailbox.piece_at(to).unwrap();
+
+        // Move piece back to its original square
+        self.remove_piece(colour, piece, to);
+        // If move was a promotion, we want to place back a pawn
+        if mv.is_promotion() {
+            piece = Piece::Pawn
+        }
+        self.place_piece(colour, piece, from);
+
+        // Place back captured piece
+        if mv.is_capture() {
+            let capture_square = if mv.is_ep_capture() {
+                mv.get_ep_pawn_square()
+            } else {
+                to
+            };
+
+            self.place_piece(
+                colour.opposite(),
+                prev.captured_piece.unwrap(),
+                capture_square,
+            );
+        }
+
+        // If move was a castle, place back the rook
+        if mv.is_castle() {
+            let (rook_from, rook_to) =
+                Castling::get_rook_squares_from_castle(colour, mv.castle_type().unwrap());
+
+            self.remove_piece(colour, Piece::Rook, rook_to);
+            self.place_piece(colour, Piece::Rook, rook_from);
+        }
+    }
+
     pub fn load_fen(fen: &str) -> Self {
         // 0 - piece placement
         // 1 - side to move
