@@ -69,6 +69,8 @@ impl Position {
 
     #[inline(always)]
     pub fn make_move(&mut self, mv: Move, new_state: &mut StateInfo) {
+        self.ep_square = Square::NONE;
+        
         self.halfmove_clock += 1;
         new_state.halfmove_clock = self.halfmove_clock;
         if self.side_to_move == Colour::Black {
