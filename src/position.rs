@@ -1,9 +1,12 @@
-use crate::types::{Bitboard, Castling, Colour, Mailbox, Move, Piece, PieceCode, Square};
+use crate::{
+    types::{Bitboard, Castling, Colour, Mailbox, Move, Piece, PieceCode, Square},
+    zobrist::{ZKey, ep_hashable},
+};
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 pub struct StateInfo {
-    pub zkey: u64,
+    pub zkey: ZKey,
     pub ep_square: Square,
     pub castling_rights: Castling,
     pub captured_piece: Option<Piece>,
@@ -15,7 +18,7 @@ pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
     pub mailbox: Mailbox,
-    pub zkey: u64,
+    pub zkey: ZKey,
     pub fullmove_counter: u16,
     pub side_to_move: Colour,
     pub ep_square: Square,
@@ -31,7 +34,7 @@ impl Position {
             pieces: [[Bitboard::new(0); 6]; 2],
             occupancy: [Bitboard::new(0); 3],
             mailbox: Mailbox::new(),
-            zkey: 0,
+            zkey: ZKey(0),
             fullmove_counter: 0,
             side_to_move: Colour::White,
             ep_square: Square::NONE,
@@ -51,6 +54,8 @@ impl Position {
         let pc = PieceCode::new(colour, piece);
         self.mailbox.set_square(square, pc);
 
+        self.zkey.toggle_piece(pc, square);
+
         // Set white/black king squares
         if piece == Piece::King {
             match colour {
@@ -66,6 +71,9 @@ impl Position {
         self.occupancy[colour.idx()].clear_square(square);
         self.occupancy[2].clear_square(square);
         self.mailbox.clear_square(square);
+
+        let pc = PieceCode::new(colour, piece);
+        self.zkey.toggle_piece(pc, square);
     }
 
     #[inline(always)]
@@ -77,6 +85,10 @@ impl Position {
         state.fullmove_counter = self.fullmove_counter;
         state.captured_piece = None;
 
+        // Unhash old en passant file if it exists
+        if ep_hashable(&self.mailbox, self.ep_square, self.side_to_move) {
+            self.zkey.toggle_ep_file(self.ep_square);
+        }
         self.ep_square = Square::NONE;
 
         self.halfmove_clock += 1;
@@ -89,7 +101,10 @@ impl Position {
         let to = mv.to();
         let piece = self.mailbox.piece_at(from).unwrap();
 
+        // Update castling rights and increment zobrist key
+        self.zkey.toggle_castling(self.castling_rights);
         self.castling_rights.update(from, to);
+        self.zkey.toggle_castling(self.castling_rights);
 
         // If promotion occurs we need to set the promoted piece bitboard and mailbox code
         let to_piece = mv.promotion_piece().unwrap_or(piece);
@@ -128,11 +143,18 @@ impl Position {
             // If move was a double pawn move, update ep square
             if mv.is_double_push() {
                 let ep_square = Square::new((from.u8() + to.u8()) >> 1);
+
+                // Update the zkey only if the double pushed pawn has an opposition pawn next to it
+                if ep_hashable(&self.mailbox, ep_square, colour.opposite()) {
+                    self.zkey.toggle_ep_file(ep_square);
+                }
+
                 self.ep_square = ep_square;
             }
         }
 
         self.side_to_move = self.side_to_move.opposite();
+        self.zkey.toggle_side();
     }
 
     #[inline(always)]
@@ -143,7 +165,6 @@ impl Position {
         self.fullmove_counter = prev.fullmove_counter;
         self.castling_rights = prev.castling_rights;
         self.ep_square = prev.ep_square;
-        self.zkey = prev.zkey;
 
         let colour = self.side_to_move;
         let from = mv.from();
@@ -181,6 +202,9 @@ impl Position {
             self.remove_piece(colour, Piece::Rook, rook_to);
             self.place_piece(colour, Piece::Rook, rook_from);
         }
+
+        // Replace zkey at the end so we don't accidentally update it placing/removing pieces
+        self.zkey = prev.zkey;
     }
 
     pub fn load_fen(fen: &str) -> Self {
@@ -247,6 +271,14 @@ impl Position {
         // Half/fullmove count
         position.halfmove_clock = fen_parts[4].parse::<u8>().unwrap();
         position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap();
+
+        // Zobrist key
+        position.zkey = ZKey::compute_zobrist_key(
+            &position.mailbox,
+            position.side_to_move,
+            position.castling_rights,
+            position.ep_square,
+        );
 
         return position;
     }

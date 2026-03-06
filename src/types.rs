@@ -135,6 +135,11 @@ impl PieceCode {
     }
 
     #[inline(always)]
+    pub const fn idx(self) -> usize {
+        self.0 as usize
+    }
+
+    #[inline(always)]
     pub const fn is_empty(self) -> bool {
         self.0 == Self::EMPTY.0
     }
@@ -218,6 +223,18 @@ impl Mailbox {
     #[inline(always)]
     pub const fn piece_at(&self, square: Square) -> Option<Piece> {
         self.piece_code_at(square).piece()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Square, PieceCode)> + '_ {
+        self.0
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, pc)| (Square::new(i as u8), pc))
+    }
+
+    pub fn iter_occupied(&self) -> impl Iterator<Item = (Square, PieceCode)> + '_ {
+        self.iter().filter(|(_, pc)| !pc.is_empty())
     }
 }
 
