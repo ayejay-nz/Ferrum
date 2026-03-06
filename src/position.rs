@@ -8,6 +8,7 @@ pub struct StateInfo {
     pub castling_rights: Castling,
     pub captured_piece: Option<Piece>,
     pub halfmove_clock: u8,
+    pub fullmove_counter: u16,
 }
 
 pub struct Position {
@@ -73,6 +74,7 @@ impl Position {
         state.ep_square = self.ep_square;
         state.castling_rights = self.castling_rights;
         state.halfmove_clock = self.halfmove_clock;
+        state.fullmove_counter = self.fullmove_counter;
         state.captured_piece = None;
 
         self.ep_square = Square::NONE;
