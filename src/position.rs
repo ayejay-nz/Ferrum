@@ -2,6 +2,14 @@ use crate::types::{Bitboard, Castling, Colour, Mailbox, Move, Piece, PieceCode, 
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+pub struct StateInfo {
+    pub zkey: u64,
+    pub ep_square: Square,
+    pub castling_rights: Castling,
+    pub captured_piece: Option<Piece>,
+    pub halfmove_clock: u8,
+}
+
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
@@ -60,8 +68,9 @@ impl Position {
     }
 
     #[inline(always)]
-    pub fn make_move(&mut self, mv: Move) {
+    pub fn make_move(&mut self, mv: Move, new_state: &mut StateInfo) {
         self.halfmove_clock += 1;
+        new_state.halfmove_clock = self.halfmove_clock;
         if self.side_to_move == Colour::Black {
             self.fullmove_counter += 1;
         }
@@ -72,6 +81,7 @@ impl Position {
         let piece = self.mailbox.piece_at(from).unwrap();
 
         self.castling_rights.update(from, to);
+        new_state.castling_rights = self.castling_rights;
 
         // If promotion occurs we need to set the promoted piece bitboard and mailbox code
         let to_piece = mv.promotion_piece().unwrap_or(piece);
@@ -79,6 +89,7 @@ impl Position {
         // Remove captured piece and update halfmove clock
         if mv.is_capture() {
             self.halfmove_clock = 0;
+            new_state.halfmove_clock = 0;
 
             // Find the captured piece -- ep piece is not always on `to` square
             let capture_square = if mv.is_ep_capture() {
@@ -89,6 +100,7 @@ impl Position {
             let captured_piece = self.mailbox.piece_at(capture_square).unwrap();
 
             self.remove_piece(colour.opposite(), captured_piece, capture_square);
+            new_state.captured_piece = Some(captured_piece);
         }
 
         // Move the piece
@@ -105,10 +117,13 @@ impl Position {
         // Pawn move resets halfmove clock
         if piece == Piece::Pawn {
             self.halfmove_clock = 0;
+            new_state.halfmove_clock = 0;
 
             // If move was a double pawn move, update ep square
             if mv.is_double_push() {
-                self.ep_square = Square::new((from.u8() + to.u8()) >> 1);
+                let ep_square = Square::new((from.u8() + to.u8()) >> 1);
+                self.ep_square = ep_square;
+                new_state.ep_square = ep_square;
             }
         }
 
