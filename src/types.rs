@@ -361,7 +361,7 @@ impl Move {
     pub const NULL: Self = Self(0);
 
     #[inline(always)]
-    pub fn new(from: Square, to: Square, flag: MoveFlag) -> Self {
+    pub const fn new(from: Square, to: Square, flag: MoveFlag) -> Self {
         Self(from.u16() | to.u16() << 6 | (flag as u16) << 12)
     }
 
@@ -437,5 +437,236 @@ impl Move {
     #[inline(always)]
     pub fn is_double_push(self) -> bool {
         self.flag() == 0b0001
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::position::{Position, StateInfo};
+
+    use super::*;
+
+    const A1: Square = Square::new(0);
+    const A7: Square = Square::new(48);
+    const A8: Square = Square::new(56);
+    const B8: Square = Square::new(57);
+    const C1: Square = Square::new(2);
+    const D3: Square = Square::new(19);
+    const D4: Square = Square::new(27);
+    const D5: Square = Square::new(35);
+    const D8: Square = Square::new(59);
+    const E1: Square = Square::new(4);
+    const E2: Square = Square::new(12);
+    const E4: Square = Square::new(28);
+    const E5: Square = Square::new(36);
+    const E6: Square = Square::new(44);
+    const F1: Square = Square::new(5);
+    const G1: Square = Square::new(6);
+    const H1: Square = Square::new(7);
+    const H8: Square = Square::new(63);
+
+    const PAWN_E4: Move = Move::new(E2, E4, MoveFlag::DoublePush);
+
+    fn set_board(fen: &str) -> (Position, StateInfo) {
+        let pos = Position::load_fen(fen);
+        let mut state = StateInfo::new();
+        state.set_from_position(&pos);
+        return (pos, state);
+    }
+
+    // --- Squares ---
+    #[test]
+    fn rank_returns_expected_rank() {
+        assert_eq!(A1.rank(), 0);
+        assert_eq!(A8.rank(), 7);
+        assert_eq!(E4.rank(), 3);
+        assert_eq!(H1.rank(), 0);
+        assert_eq!(H8.rank(), 7);
+    }
+
+    #[test]
+    fn file_returns_expected_file() {
+        assert_eq!(A1.file(), 0);
+        assert_eq!(A8.file(), 0);
+        assert_eq!(E4.file(), 4);
+        assert_eq!(H1.file(), 7);
+        assert_eq!(H8.file(), 7);
+    }
+
+    #[test]
+    fn square_from_coords_is_correct() {
+        assert_eq!(Square::from_coords(0, 0), A1);
+        assert_eq!(Square::from_coords(7, 0), A8);
+        assert_eq!(Square::from_coords(3, 4), E4);
+        assert_eq!(Square::from_coords(0, 7), H1);
+        assert_eq!(Square::from_coords(7, 7), H8);
+    }
+
+    #[test]
+    fn square_is_none() {
+        assert!(Square::is_none(Square::NONE));
+        assert_eq!(H8.is_none(), false);
+    }
+
+    #[test]
+    fn square_bit_is_correct() {
+        assert_eq!(A1.bit(), 1);
+        assert_eq!(A8.bit(), 2u64.pow(56));
+        assert_eq!(E4.bit(), 2u64.pow(28));
+        assert_eq!(H1.bit(), 2u64.pow(7));
+        assert_eq!(H8.bit(), 2u64.pow(63));
+    }
+
+    // --- Bitboards ---
+    #[test]
+    fn bitboard_updates_work() {
+        let mut bb = Bitboard::new(0);
+        let mut bb_value = 0;
+        bb.set_square(E4);
+        bb_value += 1 << E4.u8();
+        assert_eq!(bb.0, bb_value);
+        bb.set_square(H8);
+        bb_value += 1 << H8.u8();
+        assert_eq!(bb.0, bb_value);
+
+        bb.clear_square(E4);
+        bb_value -= 1 << E4.u8();
+        assert_eq!(bb.0, bb_value);
+        bb.clear_square(H8);
+        bb_value -= 1 << H8.u8();
+        assert_eq!(bb.0, bb_value);
+    }
+
+    // --- Pieces ---
+    #[test]
+    fn piece_code_is_empty() {
+        assert!(PieceCode::EMPTY.is_empty());
+        assert_eq!(PieceCode::new(Colour::White, Piece::Pawn).is_empty(), false);
+    }
+
+    #[test]
+    fn piece_code_colour_is_correct() {
+        assert_eq!(PieceCode::EMPTY.colour(), None);
+        let white_pawn = PieceCode::new(Colour::White, Piece::Pawn);
+        let black_pawn = PieceCode::new(Colour::Black, Piece::Pawn);
+        assert_eq!(white_pawn.colour(), Some(Colour::White));
+        assert_eq!(black_pawn.colour(), Some(Colour::Black));
+    }
+
+    #[test]
+    fn piece_code_piece_is_correct() {
+        assert_eq!(PieceCode::EMPTY.piece(), None);
+        let white_pawn = PieceCode::new(Colour::White, Piece::Pawn);
+        let white_king = PieceCode::new(Colour::White, Piece::King);
+        assert_eq!(white_pawn.piece(), Some(Piece::Pawn));
+        assert_eq!(white_king.piece(), Some(Piece::King));
+    }
+
+    #[test]
+    fn piece_code_from_char_is_correct() {
+        assert_eq!(PieceCode::from_char('Z'), None);
+        let white_pawn = PieceCode::from_char('P');
+        let black_king = PieceCode::from_char('k');
+        assert_eq!(white_pawn, Some(PieceCode::new(Colour::White, Piece::Pawn)));
+        assert_eq!(black_king, Some(PieceCode::new(Colour::Black, Piece::King)));
+    }
+
+    // --- Mailbox ---
+    #[test]
+    fn mailbox_piece_code_at_is_correct() {
+        let mut mailbox = Mailbox::new();
+        let white_pawn = PieceCode::new(Colour::White, Piece::Pawn);
+        mailbox.set_square(E4, white_pawn);
+        assert_eq!(mailbox.piece_code_at(E4), white_pawn);
+    }
+
+    // --- Castling ---
+    #[test]
+    fn castling_update_is_correct() {
+        let (mut pos, mut state) = set_board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+
+        // Moving king clears castling rights
+        let king_move = Move::new(E1, F1, MoveFlag::Quiet);
+        pos.make_move(king_move, &mut state);
+        assert_eq!(
+            pos.castling_rights.bits(),
+            Castling::BK_BIT | Castling::BQ_BIT
+        );
+        pos.undo_move(king_move, &state);
+
+        // Moving rook clears castling rights and rook capture clears opposition rights
+        let rook_move = Move::new(H1, H8, MoveFlag::Capture);
+        pos.make_move(rook_move, &mut state);
+        assert_eq!(
+            pos.castling_rights.bits(),
+            Castling::BQ_BIT | Castling::WQ_BIT
+        );
+        pos.undo_move(rook_move, &state);
+    }
+
+    #[test]
+    fn castling_get_rook_squares_is_correct() {
+        let (rook_start, rook_end) =
+            Castling::get_rook_squares_from_castle(Colour::White, CastlingType::Kingside);
+        assert_eq!(rook_start, H1);
+        assert_eq!(rook_end, F1);
+
+        let (rook_start, rook_end) =
+            Castling::get_rook_squares_from_castle(Colour::Black, CastlingType::Queenside);
+        assert_eq!(rook_start, A8);
+        assert_eq!(rook_end, D8);
+    }
+
+    #[test]
+    fn castling_can_castle_is_correct() {
+        let default = Castling::DEFAULT;
+        assert!(default.can_white_ks());
+        assert!(default.can_white_qs());
+        assert!(default.can_black_ks());
+        assert!(default.can_black_qs());
+    }
+
+    // --- Moves ---
+    #[test]
+    fn move_from_is_correct() {
+        assert_eq!(PAWN_E4.from(), E2)
+    }
+
+    #[test]
+    fn move_to_is_correct() {
+        assert_eq!(PAWN_E4.to(), E4)
+    }
+
+    #[test]
+    fn move_flag_is_correct() {
+        assert_eq!(PAWN_E4.flag(), MoveFlag::DoublePush as u8)
+    }
+
+    #[test]
+    fn move_get_ep_pawn_square_is_correct() {
+        let white_ep_move = Move::new(D5, E6, MoveFlag::EpCapture);
+        let black_ep_move = Move::new(E4, D3, MoveFlag::EpCapture);
+        assert_eq!(white_ep_move.get_ep_pawn_square(), E5);
+        assert_eq!(black_ep_move.get_ep_pawn_square(), D4);
+    }
+
+    #[test]
+    fn move_promotion_piece_is_correct() {
+        let non_promo_move = Move::new(E2, E4, MoveFlag::DoublePush);
+        let promo_move = Move::new(A7, A8, MoveFlag::PromoN);
+        let capture_promo_move = Move::new(A7, B8, MoveFlag::PromoCaptureQ);
+        assert_eq!(non_promo_move.promotion_piece(), None);
+        assert_eq!(promo_move.promotion_piece(), Some(Piece::Knight));
+        assert_eq!(capture_promo_move.promotion_piece(), Some(Piece::Queen));
+    }
+
+    #[test]
+    fn move_castle_type_is_correct() {
+        let non_castle_move = Move::new(E2, E4, MoveFlag::DoublePush);
+        let ks_castle_move = Move::new(E1, G1, MoveFlag::KingCastle);
+        let qs_castle_move = Move::new(E1, C1, MoveFlag::QueenCastle);
+        assert_eq!(non_castle_move.castle_type(), None);
+        assert_eq!(ks_castle_move.castle_type(), Some(CastlingType::Kingside));
+        assert_eq!(qs_castle_move.castle_type(), Some(CastlingType::Queenside));
     }
 }
