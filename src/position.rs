@@ -14,6 +14,27 @@ pub struct StateInfo {
     pub fullmove_counter: u16,
 }
 
+impl StateInfo {
+    pub fn new() -> Self {
+        Self {
+            zkey: ZKey(0),
+            ep_square: Square::NONE,
+            castling_rights: Castling::NONE,
+            captured_piece: None,
+            halfmove_clock: 0,
+            fullmove_counter: 0,
+        }
+    }
+
+    pub fn set_from_position(&mut self, pos: &Position) {
+        self.zkey = pos.zkey;
+        self.ep_square = pos.ep_square;
+        self.castling_rights = pos.castling_rights;
+        self.halfmove_clock = pos.halfmove_clock;
+        self.fullmove_counter = pos.fullmove_counter;
+    }
+}
+
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
