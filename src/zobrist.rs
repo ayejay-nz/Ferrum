@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn toggle_zobrist_is_correct() {
-        let pos = Position::from_fen(DEFAULT_FEN);
+        let pos = Position::default();
         let start_zkey = ZKey::compute_zobrist_key(
             &pos.mailbox,
             pos.side_to_move,

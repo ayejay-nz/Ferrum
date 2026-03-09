@@ -304,6 +304,10 @@ impl Position {
         return position;
     }
 
+    pub fn default() -> Self {
+        Self::from_fen(DEFAULT_FEN)
+    }
+
     pub fn display(&self) {
         let piece_symbols = [
             ['♟', '♞', '♝', '♜', '♛', '♚'], // These are technically black pieces according to ASCII
