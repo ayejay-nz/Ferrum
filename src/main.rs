@@ -1,6 +1,4 @@
-mod position;
-mod types;
-mod zobrist;
+use rust_engine::position;
 
 fn main() {
     let pos = position::Position::from_fen(position::DEFAULT_FEN);

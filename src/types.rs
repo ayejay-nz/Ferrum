@@ -442,9 +442,9 @@ impl Move {
 
 #[cfg(test)]
 mod tests {
-    use crate::position::{Position, StateInfo};
-
     use super::*;
+
+    use crate::position::{Position, StateInfo};
 
     const A1: Square = Square::new(0);
     const A7: Square = Square::new(48);

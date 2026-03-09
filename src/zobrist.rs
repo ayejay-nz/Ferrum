@@ -888,10 +888,10 @@ impl ZKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::position::{DEFAULT_FEN, Position};
+    use super::*;
     use std::sync::LazyLock;
 
-    use super::*;
+    use crate::position::{DEFAULT_FEN, Position};
 
     struct EpCase {
         name: &'static str,
