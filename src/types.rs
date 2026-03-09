@@ -3,8 +3,28 @@
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Square(u8);
 
+macro_rules! define_squares {
+    ($($name:ident = $val:expr),* $(,)?) => {
+        $(
+            pub const $name: Square = Square($val);
+        )*
+    };
+}
+
 impl Square {
     pub const NONE: Self = Self(64);
+
+    // Define all square values using macro
+    define_squares! {
+        A8 = 56, B8 = 57, C8 = 58, D8 = 59, E8 = 60, F8 = 61, G8 = 62, H8 = 63,
+        A7 = 48, B7 = 49, C7 = 50, D7 = 51, E7 = 52, F7 = 53, G7 = 54, H7 = 55,
+        A6 = 40, B6 = 41, C6 = 42, D6 = 43, E6 = 44, F6 = 45, G6 = 46, H6 = 47,
+        A5 = 32, B5 = 33, C5 = 34, D5 = 35, E5 = 36, F5 = 37, G5 = 38, H5 = 39,
+        A4 = 24, B4 = 25, C4 = 26, D4 = 27, E4 = 28, F4 = 29, G4 = 30, H4 = 31,
+        A3 = 16, B3 = 17, C3 = 18, D3 = 19, E3 = 20, F3 = 21, G3 = 22, H3 = 23,
+        A2 = 8,  B2 = 9,  C2 = 10, D2 = 11, E2 = 12, F2 = 13, G2 = 14, H2 = 15,
+        A1 = 0,  B1 = 1,  C1 = 2,  D1 = 3,  E1 = 4,  F1 = 5,  G1 = 6,  H1 = 7,
+    }
 
     #[inline(always)]
     pub const fn new(sq: u8) -> Self {
@@ -300,10 +320,10 @@ impl Castling {
     pub fn get_rook_squares_from_castle(colour: Colour, side: CastlingType) -> (Square, Square) {
         // Return a tuple of the rooks move as (from, to) squares
         match (colour, side) {
-            (Colour::White, CastlingType::Kingside) => (Square::new(7), Square::new(5)), // h1 -> f1
-            (Colour::White, CastlingType::Queenside) => (Square::new(0), Square::new(3)), // a1 -> d1
-            (Colour::Black, CastlingType::Kingside) => (Square::new(63), Square::new(61)), // h8 -> f8
-            (Colour::Black, CastlingType::Queenside) => (Square::new(56), Square::new(59)), // a8 ->
+            (Colour::White, CastlingType::Kingside) => (Square::H1, Square::F1),
+            (Colour::White, CastlingType::Queenside) => (Square::A1, Square::D1),
+            (Colour::Black, CastlingType::Kingside) => (Square::H8, Square::F8),
+            (Colour::Black, CastlingType::Queenside) => (Square::A8, Square::D8),
         }
     }
 
@@ -446,26 +466,7 @@ mod tests {
 
     use crate::position::{Position, StateInfo};
 
-    const A1: Square = Square::new(0);
-    const A7: Square = Square::new(48);
-    const A8: Square = Square::new(56);
-    const B8: Square = Square::new(57);
-    const C1: Square = Square::new(2);
-    const D3: Square = Square::new(19);
-    const D4: Square = Square::new(27);
-    const D5: Square = Square::new(35);
-    const D8: Square = Square::new(59);
-    const E1: Square = Square::new(4);
-    const E2: Square = Square::new(12);
-    const E4: Square = Square::new(28);
-    const E5: Square = Square::new(36);
-    const E6: Square = Square::new(44);
-    const F1: Square = Square::new(5);
-    const G1: Square = Square::new(6);
-    const H1: Square = Square::new(7);
-    const H8: Square = Square::new(63);
-
-    const PAWN_E4: Move = Move::new(E2, E4, MoveFlag::DoublePush);
+    const PAWN_E4: Move = Move::new(Square::E2, Square::E4, MoveFlag::DoublePush);
 
     fn set_board(fen: &str) -> (Position, StateInfo) {
         let pos = Position::from_fen(fen);
@@ -477,44 +478,44 @@ mod tests {
     // --- Squares ---
     #[test]
     fn rank_returns_expected_rank() {
-        assert_eq!(A1.rank(), 0);
-        assert_eq!(A8.rank(), 7);
-        assert_eq!(E4.rank(), 3);
-        assert_eq!(H1.rank(), 0);
-        assert_eq!(H8.rank(), 7);
+        assert_eq!(Square::A1.rank(), 0);
+        assert_eq!(Square::A8.rank(), 7);
+        assert_eq!(Square::E4.rank(), 3);
+        assert_eq!(Square::H1.rank(), 0);
+        assert_eq!(Square::H8.rank(), 7);
     }
 
     #[test]
     fn file_returns_expected_file() {
-        assert_eq!(A1.file(), 0);
-        assert_eq!(A8.file(), 0);
-        assert_eq!(E4.file(), 4);
-        assert_eq!(H1.file(), 7);
-        assert_eq!(H8.file(), 7);
+        assert_eq!(Square::A1.file(), 0);
+        assert_eq!(Square::A8.file(), 0);
+        assert_eq!(Square::E4.file(), 4);
+        assert_eq!(Square::H1.file(), 7);
+        assert_eq!(Square::H8.file(), 7);
     }
 
     #[test]
     fn square_from_coords_is_correct() {
-        assert_eq!(Square::from_coords(0, 0), A1);
-        assert_eq!(Square::from_coords(7, 0), A8);
-        assert_eq!(Square::from_coords(3, 4), E4);
-        assert_eq!(Square::from_coords(0, 7), H1);
-        assert_eq!(Square::from_coords(7, 7), H8);
+        assert_eq!(Square::from_coords(0, 0), Square::A1);
+        assert_eq!(Square::from_coords(7, 0), Square::A8);
+        assert_eq!(Square::from_coords(3, 4), Square::E4);
+        assert_eq!(Square::from_coords(0, 7), Square::H1);
+        assert_eq!(Square::from_coords(7, 7), Square::H8);
     }
 
     #[test]
     fn square_is_none() {
         assert!(Square::is_none(Square::NONE));
-        assert_eq!(H8.is_none(), false);
+        assert_eq!(Square::H8.is_none(), false);
     }
 
     #[test]
     fn square_bit_is_correct() {
-        assert_eq!(A1.bit(), 1);
-        assert_eq!(A8.bit(), 2u64.pow(56));
-        assert_eq!(E4.bit(), 2u64.pow(28));
-        assert_eq!(H1.bit(), 2u64.pow(7));
-        assert_eq!(H8.bit(), 2u64.pow(63));
+        assert_eq!(Square::A1.bit(), 1);
+        assert_eq!(Square::A8.bit(), 2u64.pow(56));
+        assert_eq!(Square::E4.bit(), 2u64.pow(28));
+        assert_eq!(Square::H1.bit(), 2u64.pow(7));
+        assert_eq!(Square::H8.bit(), 2u64.pow(63));
     }
 
     // --- Bitboards ---
@@ -522,18 +523,18 @@ mod tests {
     fn bitboard_updates_work() {
         let mut bb = Bitboard::new(0);
         let mut bb_value = 0;
-        bb.set_square(E4);
-        bb_value += 1 << E4.u8();
+        bb.set_square(Square::E4);
+        bb_value += 1 << Square::E4.u8();
         assert_eq!(bb.0, bb_value);
-        bb.set_square(H8);
-        bb_value += 1 << H8.u8();
+        bb.set_square(Square::H8);
+        bb_value += 1 << Square::H8.u8();
         assert_eq!(bb.0, bb_value);
 
-        bb.clear_square(E4);
-        bb_value -= 1 << E4.u8();
+        bb.clear_square(Square::E4);
+        bb_value -= 1 << Square::E4.u8();
         assert_eq!(bb.0, bb_value);
-        bb.clear_square(H8);
-        bb_value -= 1 << H8.u8();
+        bb.clear_square(Square::H8);
+        bb_value -= 1 << Square::H8.u8();
         assert_eq!(bb.0, bb_value);
     }
 
@@ -576,8 +577,8 @@ mod tests {
     fn mailbox_piece_code_at_is_correct() {
         let mut mailbox = Mailbox::new();
         let white_pawn = PieceCode::new(Colour::White, Piece::Pawn);
-        mailbox.set_square(E4, white_pawn);
-        assert_eq!(mailbox.piece_code_at(E4), white_pawn);
+        mailbox.set_square(Square::E4, white_pawn);
+        assert_eq!(mailbox.piece_code_at(Square::E4), white_pawn);
     }
 
     // --- Castling ---
@@ -586,7 +587,7 @@ mod tests {
         let (mut pos, mut state) = set_board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
 
         // Moving king clears castling rights
-        let king_move = Move::new(E1, F1, MoveFlag::Quiet);
+        let king_move = Move::new(Square::E1, Square::F1, MoveFlag::Quiet);
         pos.make_move(king_move, &mut state);
         assert_eq!(
             pos.castling_rights.bits(),
@@ -595,7 +596,7 @@ mod tests {
         pos.undo_move(king_move, &state);
 
         // Moving rook clears castling rights and rook capture clears opposition rights
-        let rook_move = Move::new(H1, H8, MoveFlag::Capture);
+        let rook_move = Move::new(Square::H1, Square::H8, MoveFlag::Capture);
         pos.make_move(rook_move, &mut state);
         assert_eq!(
             pos.castling_rights.bits(),
@@ -608,13 +609,13 @@ mod tests {
     fn castling_get_rook_squares_is_correct() {
         let (rook_start, rook_end) =
             Castling::get_rook_squares_from_castle(Colour::White, CastlingType::Kingside);
-        assert_eq!(rook_start, H1);
-        assert_eq!(rook_end, F1);
+        assert_eq!(rook_start, Square::H1);
+        assert_eq!(rook_end, Square::F1);
 
         let (rook_start, rook_end) =
             Castling::get_rook_squares_from_castle(Colour::Black, CastlingType::Queenside);
-        assert_eq!(rook_start, A8);
-        assert_eq!(rook_end, D8);
+        assert_eq!(rook_start, Square::A8);
+        assert_eq!(rook_end, Square::D8);
     }
 
     #[test]
@@ -629,12 +630,12 @@ mod tests {
     // --- Moves ---
     #[test]
     fn move_from_is_correct() {
-        assert_eq!(PAWN_E4.from(), E2)
+        assert_eq!(PAWN_E4.from(), Square::E2)
     }
 
     #[test]
     fn move_to_is_correct() {
-        assert_eq!(PAWN_E4.to(), E4)
+        assert_eq!(PAWN_E4.to(), Square::E4)
     }
 
     #[test]
@@ -644,17 +645,17 @@ mod tests {
 
     #[test]
     fn move_get_ep_pawn_square_is_correct() {
-        let white_ep_move = Move::new(D5, E6, MoveFlag::EpCapture);
-        let black_ep_move = Move::new(E4, D3, MoveFlag::EpCapture);
-        assert_eq!(white_ep_move.get_ep_pawn_square(), E5);
-        assert_eq!(black_ep_move.get_ep_pawn_square(), D4);
+        let white_ep_move = Move::new(Square::D5, Square::E6, MoveFlag::EpCapture);
+        let black_ep_move = Move::new(Square::E4, Square::D3, MoveFlag::EpCapture);
+        assert_eq!(white_ep_move.get_ep_pawn_square(), Square::E5);
+        assert_eq!(black_ep_move.get_ep_pawn_square(), Square::D4);
     }
 
     #[test]
     fn move_promotion_piece_is_correct() {
-        let non_promo_move = Move::new(E2, E4, MoveFlag::DoublePush);
-        let promo_move = Move::new(A7, A8, MoveFlag::PromoN);
-        let capture_promo_move = Move::new(A7, B8, MoveFlag::PromoCaptureQ);
+        let non_promo_move = Move::new(Square::E2, Square::E4, MoveFlag::DoublePush);
+        let promo_move = Move::new(Square::A7, Square::A8, MoveFlag::PromoN);
+        let capture_promo_move = Move::new(Square::A7, Square::B8, MoveFlag::PromoCaptureQ);
         assert_eq!(non_promo_move.promotion_piece(), None);
         assert_eq!(promo_move.promotion_piece(), Some(Piece::Knight));
         assert_eq!(capture_promo_move.promotion_piece(), Some(Piece::Queen));
@@ -662,9 +663,9 @@ mod tests {
 
     #[test]
     fn move_castle_type_is_correct() {
-        let non_castle_move = Move::new(E2, E4, MoveFlag::DoublePush);
-        let ks_castle_move = Move::new(E1, G1, MoveFlag::KingCastle);
-        let qs_castle_move = Move::new(E1, C1, MoveFlag::QueenCastle);
+        let non_castle_move = Move::new(Square::E2, Square::E4, MoveFlag::DoublePush);
+        let ks_castle_move = Move::new(Square::E1, Square::G1, MoveFlag::KingCastle);
+        let qs_castle_move = Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle);
         assert_eq!(non_castle_move.castle_type(), None);
         assert_eq!(ks_castle_move.castle_type(), Some(CastlingType::Kingside));
         assert_eq!(qs_castle_move.castle_type(), Some(CastlingType::Queenside));

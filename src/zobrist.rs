@@ -978,13 +978,11 @@ mod tests {
         );
 
         let pc = PieceCode::new(Colour::White, Piece::Pawn);
-        let e2 = Square::new(12);
-        let ep_square = Square::new(20);
 
         // Check all toggles are reversable
-        zkey.toggle_piece(pc, e2);
+        zkey.toggle_piece(pc, Square::E2);
         assert_ne!(zkey, start_zkey);
-        zkey.toggle_piece(pc, e2);
+        zkey.toggle_piece(pc, Square::E2);
         assert_eq!(zkey, start_zkey);
 
         zkey.toggle_castling(Castling::DEFAULT);
@@ -992,9 +990,9 @@ mod tests {
         zkey.toggle_castling(Castling::DEFAULT);
         assert_eq!(zkey, start_zkey);
 
-        zkey.toggle_ep_file(ep_square);
+        zkey.toggle_ep_file(Square::E3);
         assert_ne!(zkey, start_zkey);
-        zkey.toggle_ep_file(ep_square);
+        zkey.toggle_ep_file(Square::E3);
         assert_eq!(zkey, start_zkey);
 
         zkey.toggle_side();
