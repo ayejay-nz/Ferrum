@@ -30,6 +30,7 @@ impl StateInfo {
         self.zkey = pos.zkey;
         self.ep_square = pos.ep_square;
         self.castling_rights = pos.castling_rights;
+        self.captured_piece = None;
         self.halfmove_clock = pos.halfmove_clock;
         self.fullmove_counter = pos.fullmove_counter;
     }
@@ -340,5 +341,246 @@ impl Position {
 
         println!("  +-----------------+");
         println!("    a b c d e f g h");
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::types::MoveFlag;
+
+    use super::*;
+
+    struct GoalState {
+        ep_square: Square,
+        castling_rights: u8,
+        halfmove_clock: u8,
+        fullmove_counter: u16,
+    }
+
+    fn check_state_correctness(pos: &Position, state: &StateInfo, goal: &GoalState) {
+        assert_eq!(
+            state.zkey,
+            ZKey::compute_zobrist_key(
+                &pos.mailbox,
+                pos.side_to_move,
+                pos.castling_rights,
+                pos.ep_square
+            )
+        );
+        assert_eq!(state.ep_square, goal.ep_square);
+        assert_eq!(state.castling_rights.bits(), goal.castling_rights);
+        assert_eq!(state.captured_piece, None);
+        assert_eq!(state.halfmove_clock, goal.halfmove_clock);
+        assert_eq!(state.fullmove_counter, goal.fullmove_counter);
+    }
+
+    fn check_position_correctness(actual: &Position, expected: &Position) {
+        assert_eq!(actual.pieces, expected.pieces);
+        assert_eq!(actual.occupancy, expected.occupancy);
+        assert_eq!(actual.mailbox, expected.mailbox);
+
+        assert_eq!(actual.white_king_square, expected.white_king_square);
+        assert_eq!(actual.black_king_square, expected.black_king_square);
+        assert_eq!(actual.zkey, expected.zkey);
+
+        // Other fields which are not touched by place_piece
+        assert_eq!(actual.side_to_move, expected.side_to_move);
+        assert_eq!(actual.ep_square, expected.ep_square);
+        assert_eq!(actual.halfmove_clock, expected.halfmove_clock);
+        assert_eq!(actual.fullmove_counter, expected.fullmove_counter);
+        assert_eq!(actual.castling_rights, expected.castling_rights);
+    }
+
+    struct MoveCase {
+        name: &'static str,
+        start_fen: &'static str,
+        mv: Move,
+        expected_fen: &'static str,
+        expected_captured_piece: Option<Piece>,
+    }
+
+    const MOVE_CASES: &[MoveCase] = &[
+        MoveCase {
+            name: "quiet_knight_move",
+            start_fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            mv: Move::new(Square::B8, Square::C6, MoveFlag::Quiet),
+            expected_fen: "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2",
+            expected_captured_piece: None,
+        },
+        MoveCase {
+            name: "double_push_set_ep",
+            start_fen: DEFAULT_FEN,
+            mv: Move::new(Square::D2, Square::D4, MoveFlag::DoublePush),
+            expected_fen: "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
+            expected_captured_piece: None,
+        },
+        MoveCase {
+            name: "ep_capture",
+            start_fen: "rnbqkbnr/1ppppppp/8/pP6/8/8/P1PPPPPP/RNBQKBNR w KQkq a6 0 4",
+            mv: Move::new(Square::B5, Square::A6, MoveFlag::EpCapture),
+            expected_fen: "rnbqkbnr/1ppppppp/P7/8/8/8/P1PPPPPP/RNBQKBNR b KQkq - 0 4",
+            expected_captured_piece: Some(Piece::Pawn),
+        },
+        MoveCase {
+            name: "normal_capture",
+            start_fen: "rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3 0 2",
+            mv: Move::new(Square::D5, Square::C4, MoveFlag::Capture),
+            expected_fen: "rnbqkbnr/ppp1pppp/8/8/2pP4/8/PP2PPPP/RNBQKBNR w KQkq - 0 3",
+            expected_captured_piece: Some(Piece::Pawn),
+        },
+        MoveCase {
+            name: "promotion_to_queen",
+            start_fen: "r1bqkbnr/pPpppppp/3n4/8/8/8/PP1PPPPP/RNBQKBNR w KQkq - 1 5",
+            mv: Move::new(Square::B7, Square::B8, MoveFlag::PromoQ),
+            expected_fen: "rQbqkbnr/p1pppppp/3n4/8/8/8/PP1PPPPP/RNBQKBNR b KQkq - 0 5",
+            expected_captured_piece: None,
+        },
+        MoveCase {
+            name: "capturing_promotion_to_knight",
+            start_fen: "r1bqkbnr/pPpppppp/3n4/8/8/8/PP1PPPPP/RNBQKBNR w KQkq - 1 5",
+            mv: Move::new(Square::B7, Square::A8, MoveFlag::PromoCaptureN),
+            expected_fen: "N1bqkbnr/p1pppppp/3n4/8/8/8/PP1PPPPP/RNBQKBNR b KQk - 0 5",
+            expected_captured_piece: Some(Piece::Rook),
+        },
+        MoveCase {
+            name: "black_kingside_castle",
+            start_fen: "rnbqk2r/ppp1bppp/4pn2/3p2B1/2PP4/2N1P3/PP3PPP/R2QKBNR b KQkq - 0 5",
+            mv: Move::new(Square::E8, Square::G8, MoveFlag::KingCastle),
+            expected_fen: "rnbq1rk1/ppp1bppp/4pn2/3p2B1/2PP4/2N1P3/PP3PPP/R2QKBNR w KQ - 1 6",
+            expected_captured_piece: None,
+        },
+        MoveCase {
+            name: "white_queenside_castle",
+            start_fen: "rnbqkb1r/1pp2ppp/p3pn2/3p4/3P1B2/2N5/PPPQPPPP/R3KBNR w KQkq - 0 5",
+            mv: Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle),
+            expected_fen: "rnbqkb1r/1pp2ppp/p3pn2/3p4/3P1B2/2N5/PPPQPPPP/2KR1BNR b kq - 1 5",
+            expected_captured_piece: None,
+        },
+    ];
+
+    #[test]
+    fn stateinfo_set_from_position_is_correct() {
+        // Check against default position
+        let pos = Position::default();
+        let mut state = StateInfo::new();
+        state.set_from_position(&pos);
+
+        let goal = GoalState {
+            ep_square: Square::NONE,
+            castling_rights: Castling::DEFAULT.bits(),
+            halfmove_clock: 0,
+            fullmove_counter: 1,
+        };
+        check_state_correctness(&pos, &state, &goal);
+
+        // Update state to new position
+        let fen = "rnbq1rk1/ppp2ppp/4pn2/b2p2B1/1PPP4/P1N2N2/4PPPP/R2QKB1R b KQ b3 0 7";
+        let pos = Position::from_fen(&fen);
+        state.set_from_position(&pos);
+
+        let goal = GoalState {
+            ep_square: Square::B3,
+            castling_rights: Castling::WK_BIT | Castling::WQ_BIT,
+            halfmove_clock: 0,
+            fullmove_counter: 7,
+        };
+        check_state_correctness(&pos, &state, &goal);
+    }
+
+    #[test]
+    fn position_place_piece_is_correct() {
+        let mut pos = Position::new();
+
+        pos.place_piece(Colour::White, Piece::King, Square::E1);
+        pos.place_piece(Colour::Black, Piece::King, Square::E8);
+        pos.place_piece(Colour::White, Piece::Rook, Square::A1);
+        pos.place_piece(Colour::Black, Piece::Rook, Square::H8);
+        pos.place_piece(Colour::White, Piece::Bishop, Square::G5);
+        pos.place_piece(Colour::Black, Piece::Bishop, Square::G7);
+        pos.place_piece(Colour::White, Piece::Knight, Square::H3);
+        pos.place_piece(Colour::Black, Piece::Knight, Square::C6);
+        pos.place_piece(Colour::White, Piece::Pawn, Square::E2);
+        pos.place_piece(Colour::Black, Piece::Pawn, Square::E7);
+
+        let expected_fen = "4k2r/4p1b1/2n5/6B1/8/7N/4P3/R3K3 w - - 0 0";
+        let expected_pos = Position::from_fen(expected_fen);
+        check_position_correctness(&pos, &expected_pos);
+    }
+
+    #[test]
+    fn position_remove_piece_is_correct() {
+        let mut pos = Position::default();
+
+        pos.remove_piece(Colour::White, Piece::Pawn, Square::H2);
+        pos.remove_piece(Colour::White, Piece::Pawn, Square::D2);
+        pos.remove_piece(Colour::White, Piece::Rook, Square::A1);
+        pos.remove_piece(Colour::White, Piece::Queen, Square::D1);
+        pos.remove_piece(Colour::Black, Piece::Pawn, Square::D7);
+        pos.remove_piece(Colour::Black, Piece::Pawn, Square::G7);
+        pos.remove_piece(Colour::Black, Piece::Knight, Square::B8);
+        pos.remove_piece(Colour::Black, Piece::Bishop, Square::F8);
+
+        // Note that remove_piece does not update castling rights
+        let expected_fen = "r1bqk1nr/ppp1pp1p/8/8/8/8/PPP1PPP1/1NB1KBNR w KkQq - 0 1";
+        let expected_pos = Position::from_fen(expected_fen);
+        check_position_correctness(&pos, &expected_pos);
+    }
+
+    #[test]
+    fn position_make_move_is_correct() {
+        for case in MOVE_CASES {
+            let mut pos = Position::from_fen(case.start_fen);
+            let start = Position::from_fen(case.start_fen);
+            let mut state = StateInfo::new();
+            state.set_from_position(&pos);
+
+            pos.make_move(case.mv, &mut state);
+            let expected_pos = Position::from_fen(case.expected_fen);
+
+            check_position_correctness(&pos, &expected_pos);
+
+            // Validate state snapshot
+            assert_eq!(state.zkey, start.zkey, "failed case: {}", case.name);
+            assert_eq!(
+                state.ep_square, start.ep_square,
+                "failed case: {}",
+                case.name
+            );
+            assert_eq!(
+                state.castling_rights, start.castling_rights,
+                "failed case: {}",
+                case.name
+            );
+            assert_eq!(
+                state.halfmove_clock, start.halfmove_clock,
+                "failed case: {}",
+                case.name
+            );
+            assert_eq!(
+                state.fullmove_counter, start.fullmove_counter,
+                "failed case: {}",
+                case.name
+            );
+            assert_eq!(
+                state.captured_piece, case.expected_captured_piece,
+                "failed case: {}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn position_undo_move_is_correct() {
+        for case in MOVE_CASES {
+            let mut pos = Position::from_fen(case.start_fen);
+            let start = Position::from_fen(case.start_fen);
+            let mut state = StateInfo::new();
+            state.set_from_position(&pos);
+
+            pos.make_move(case.mv, &mut state);
+            pos.undo_move(case.mv, &state);
+
+            check_position_correctness(&pos, &start);
+        }
     }
 }
