@@ -922,15 +922,15 @@ mod tests {
 
     static POSITIONS: LazyLock<[Position; 9]> = LazyLock::new(|| {
         [
-            Position::load_fen(&"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
-            Position::load_fen(&"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"),
-            Position::load_fen(&"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"),
-            Position::load_fen(&"rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2"),
-            Position::load_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"),
-            Position::load_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR b kq - 0 3"),
-            Position::load_fen(&"rnbq1bnr/ppp1pkpp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR w - - 0 4"),
-            Position::load_fen(&"rnbqkbnr/p1pppppp/8/8/PpP4P/8/1P1PPPP1/RNBQKBNR b KQkq c3 0 3"),
-            Position::load_fen(&"rnbqkbnr/p1pppppp/8/8/P6P/R1p5/1P1PPPP1/1NBQKBNR b Kkq - 0 4"),
+            Position::from_fen(&"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+            Position::from_fen(&"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"),
+            Position::from_fen(&"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"),
+            Position::from_fen(&"rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2"),
+            Position::from_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"),
+            Position::from_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR b kq - 0 3"),
+            Position::from_fen(&"rnbq1bnr/ppp1pkpp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR w - - 0 4"),
+            Position::from_fen(&"rnbqkbnr/p1pppppp/8/8/PpP4P/8/1P1PPPP1/RNBQKBNR b KQkq c3 0 3"),
+            Position::from_fen(&"rnbqkbnr/p1pppppp/8/8/P6P/R1p5/1P1PPPP1/1NBQKBNR b Kkq - 0 4"),
         ]
     });
     static KEYS: LazyLock<[ZKey; 9]> = LazyLock::new(|| {
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn toggle_zobrist_is_correct() {
-        let pos = Position::load_fen(DEFAULT_FEN);
+        let pos = Position::from_fen(DEFAULT_FEN);
         let start_zkey = ZKey::compute_zobrist_key(
             &pos.mailbox,
             pos.side_to_move,
@@ -1006,7 +1006,7 @@ mod tests {
     #[test]
     fn ep_hashable_is_correct() {
         for ep in EP_CASES.iter() {
-            let pos = Position::load_fen(ep.fen);
+            let pos = Position::from_fen(ep.fen);
             assert_eq!(
                 ep_hashable(&pos.mailbox, pos.ep_square, pos.side_to_move),
                 ep.expected,

@@ -468,7 +468,7 @@ mod tests {
     const PAWN_E4: Move = Move::new(E2, E4, MoveFlag::DoublePush);
 
     fn set_board(fen: &str) -> (Position, StateInfo) {
-        let pos = Position::load_fen(fen);
+        let pos = Position::from_fen(fen);
         let mut state = StateInfo::new();
         state.set_from_position(&pos);
         return (pos, state);

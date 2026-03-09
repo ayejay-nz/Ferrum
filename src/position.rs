@@ -228,7 +228,7 @@ impl Position {
         self.zkey = prev.zkey;
     }
 
-    pub fn load_fen(fen: &str) -> Self {
+    pub fn from_fen(fen: &str) -> Self {
         // 0 - piece placement
         // 1 - side to move
         // 2 - castling

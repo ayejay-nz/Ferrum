@@ -3,6 +3,6 @@ mod types;
 mod zobrist;
 
 fn main() {
-    let pos = position::Position::load_fen(position::DEFAULT_FEN);
+    let pos = position::Position::from_fen(position::DEFAULT_FEN);
     pos.display();
 }
