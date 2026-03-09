@@ -5,6 +5,7 @@ use crate::{
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct StateInfo {
     pub zkey: ZKey,
     pub ep_square: Square,
@@ -36,6 +37,7 @@ impl StateInfo {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
