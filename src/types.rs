@@ -71,6 +71,11 @@ impl Square {
     pub const fn bit(self) -> u64 {
         1u64 << self.0
     }
+
+    #[inline(always)]
+    pub const fn bitboard(self) -> Bitboard {
+        Bitboard::new(self.bit())
+    }
 }
 
 impl Default for Square {
