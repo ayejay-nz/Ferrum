@@ -51,11 +51,14 @@ pub struct Position {
 
 impl Position {
     pub fn new() -> Self {
+        let mut zkey = ZKey(0);
+        zkey.toggle_side();
+
         Self {
             pieces: [[Bitboard::new(0); 6]; 2],
             occupancy: [Bitboard::new(0); 3],
             mailbox: Mailbox::new(),
-            zkey: ZKey(0),
+            zkey: zkey,
             fullmove_counter: 0,
             side_to_move: Colour::White,
             ep_square: Square::NONE,
