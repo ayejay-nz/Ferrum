@@ -829,8 +829,8 @@ pub fn ep_hashable(mailbox: &Mailbox, ep_square: Square, stm: Colour) -> bool {
                 || (ep_file > 0 && (mailbox.piece_code_at(Square::new(sq - 9)) == pawn))
         }
         Colour::Black => {
-            (ep_file < 7 && (mailbox.piece_code_at(Square::new(sq + 7)) == pawn))
-                || (ep_file > 0 && (mailbox.piece_code_at(Square::new(sq + 9)) == pawn))
+            (ep_file < 7 && (mailbox.piece_code_at(Square::new(sq + 9)) == pawn))
+                || (ep_file > 0 && (mailbox.piece_code_at(Square::new(sq + 7)) == pawn))
         }
     }
 }
@@ -883,5 +883,137 @@ impl ZKey {
     #[inline(always)]
     pub fn toggle_side(&mut self) {
         self.0 ^= SIDE_TO_MOVE_KEY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::position::{DEFAULT_FEN, Position};
+    use std::sync::LazyLock;
+
+    use super::*;
+
+    struct EpCase {
+        name: &'static str,
+        fen: &'static str,
+        expected: bool,
+    }
+
+    #[rustfmt::skip]
+    const EP_CASES: &[EpCase] = &[
+        EpCase {name: "none_ep", fen: DEFAULT_FEN, expected: false},
+
+        EpCase {name: "white_edge_hashable_a", fen: "rnbqkbnr/1ppppppp/8/pP6/8/8/P1PPPPPP/RNBQKBNR w KQkq a6 0 1", expected: true},
+        EpCase {name: "white_edge_nonhashable_a", fen: "rnbqkbnr/1ppppppp/7P/p7/8/8/PPPPPPP1/RNBQKBNR w KQkq a6 0 1", expected: false},
+        EpCase {name: "white_edge_hashable_h", fen: "rnbqkbnr/ppppppp1/8/6Pp/8/8/PPPPPP1P/RNBQKBNR w KQkq h6 0 1", expected: true},
+        EpCase {name: "white_edge_nonhashable_h", fen: "rnbqkbnr/ppppppp1/P7/7p/8/8/1PPPPPPP/RNBQKBNR w KQkq h6 0 1", expected: false},
+        EpCase {name: "white_center_hashable", fen: "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1", expected: true},
+        EpCase {name: "white_center_nonhashable", fen: "rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq d6 0 1", expected: false},
+        EpCase {name: "white_sidebyside_nonhashable", fen: "rnbqkbnr/pppppppp/8/8/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3 0 1", expected: false},
+
+        EpCase {name: "black_edge_hashable_a", fen: "rnbqkbnr/p1pppppp/8/8/Pp6/8/1PPPPPPP/RNBQKBNR b KQkq a3 0 1", expected: true},
+        EpCase {name: "black_edge_nonhashable_a", fen: "rnbqkbnr/ppppppp1/8/8/P7/7p/1PPPPPPP/RNBQKBNR b KQkq a3 0 1", expected: false},
+        EpCase {name: "black_edge_hashable_h", fen: "rnbqkbnr/pppppp1p/8/8/6pP/8/PPPPPPP1/RNBQKBNR b KQkq h3 0 1", expected: true},
+        EpCase {name: "black_edge_nonhashable_h", fen: "rnbqkbnr/1ppppppp/8/8/7P/p7/PPPPPPP1/RNBQKBNR b KQkq h3 0 1", expected: false},
+        EpCase {name: "black_center_hashable", fen: "rnbqkbnr/pppp1ppp/8/8/3Pp3/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1", expected: true},
+        EpCase {name: "black_center_nonhashable", fen: "rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1", expected: false},
+        EpCase {name: "black_sidebyside_nonhashable", fen: "rnbqkbnr/ppp2ppp/8/3pp3/8/8/PPPPPPPP/RNBQKBNR w KQkq d6 0 1", expected: false},
+    ];
+
+    static POSITIONS: LazyLock<[Position; 9]> = LazyLock::new(|| {
+        [
+            Position::load_fen(&"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+            Position::load_fen(&"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"),
+            Position::load_fen(&"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"),
+            Position::load_fen(&"rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2"),
+            Position::load_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"),
+            Position::load_fen(&"rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR b kq - 0 3"),
+            Position::load_fen(&"rnbq1bnr/ppp1pkpp/8/3pPp2/8/8/PPPPKPPP/RNBQ1BNR w - - 0 4"),
+            Position::load_fen(&"rnbqkbnr/p1pppppp/8/8/PpP4P/8/1P1PPPP1/RNBQKBNR b KQkq c3 0 3"),
+            Position::load_fen(&"rnbqkbnr/p1pppppp/8/8/P6P/R1p5/1P1PPPP1/1NBQKBNR b Kkq - 0 4"),
+        ]
+    });
+    static KEYS: LazyLock<[ZKey; 9]> = LazyLock::new(|| {
+        [
+            ZKey(0x463b96181691fc9c),
+            ZKey(0x823c9b50fd114196),
+            ZKey(0x0756b94461c50fb0),
+            ZKey(0x662fafb965db29d4),
+            ZKey(0x22a48b5a8e47ff78),
+            ZKey(0x652a607ca3f242c1),
+            ZKey(0x00fdd303c946bdd9),
+            ZKey(0x3c8123ea7b067637),
+            ZKey(0x5c3f9b829b279560),
+        ]
+    });
+
+    #[test]
+    fn compute_zobrist_key_is_correct() {
+        for (i, pos) in POSITIONS.iter().enumerate() {
+            let zkey = ZKey::compute_zobrist_key(
+                &pos.mailbox,
+                pos.side_to_move,
+                pos.castling_rights,
+                pos.ep_square,
+            );
+
+            assert_eq!(zkey, KEYS[i]);
+        }
+    }
+
+    #[test]
+    fn toggle_zobrist_is_correct() {
+        let pos = Position::load_fen(DEFAULT_FEN);
+        let start_zkey = ZKey::compute_zobrist_key(
+            &pos.mailbox,
+            pos.side_to_move,
+            pos.castling_rights,
+            pos.ep_square,
+        );
+        let mut zkey = ZKey::compute_zobrist_key(
+            &pos.mailbox,
+            pos.side_to_move,
+            pos.castling_rights,
+            pos.ep_square,
+        );
+
+        let pc = PieceCode::new(Colour::White, Piece::Pawn);
+        let e2 = Square::new(12);
+        let ep_square = Square::new(20);
+
+        // Check all toggles are reversable
+        zkey.toggle_piece(pc, e2);
+        assert_ne!(zkey, start_zkey);
+        zkey.toggle_piece(pc, e2);
+        assert_eq!(zkey, start_zkey);
+
+        zkey.toggle_castling(Castling::DEFAULT);
+        assert_ne!(zkey, start_zkey);
+        zkey.toggle_castling(Castling::DEFAULT);
+        assert_eq!(zkey, start_zkey);
+
+        zkey.toggle_ep_file(ep_square);
+        assert_ne!(zkey, start_zkey);
+        zkey.toggle_ep_file(ep_square);
+        assert_eq!(zkey, start_zkey);
+
+        zkey.toggle_side();
+        assert_ne!(zkey, start_zkey);
+        zkey.toggle_side();
+        assert_eq!(zkey, start_zkey);
+    }
+
+    #[test]
+    fn ep_hashable_is_correct() {
+        for ep in EP_CASES.iter() {
+            let pos = Position::load_fen(ep.fen);
+            assert_eq!(
+                ep_hashable(&pos.mailbox, pos.ep_square, pos.side_to_move),
+                ep.expected,
+                "failed case: {} ({})",
+                ep.name,
+                ep.fen
+            );
+        }
     }
 }
