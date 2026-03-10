@@ -135,6 +135,36 @@ impl Bitboard {
     }
 }
 
+pub type Direction = i8;
+
+pub const NORTH: Direction = 8;
+pub const EAST: Direction = 1;
+pub const SOUTH: Direction = -NORTH;
+pub const WEST: Direction = -EAST;
+
+pub const NORTH_EAST: Direction = NORTH + EAST;
+pub const NORTH_WEST: Direction = NORTH + WEST;
+pub const SOUTH_EAST: Direction = SOUTH + EAST;
+pub const SOUTH_WEST: Direction = SOUTH + WEST;
+
+pub const FILE_A: u64 = 0x0101010101010101;
+pub const FILE_B: u64 = FILE_A << 1;
+pub const FILE_C: u64 = FILE_A << 2;
+pub const FILE_D: u64 = FILE_A << 3;
+pub const FILE_E: u64 = FILE_A << 4;
+pub const FILE_F: u64 = FILE_A << 5;
+pub const FILE_G: u64 = FILE_A << 6;
+pub const FILE_H: u64 = FILE_A << 7;
+
+pub const RANK_1: u64 = 0xFF;
+pub const RANK_2: u64 = RANK_1 << 8;
+pub const RANK_3: u64 = RANK_1 << 16;
+pub const RANK_4: u64 = RANK_1 << 24;
+pub const RANK_5: u64 = RANK_1 << 32;
+pub const RANK_6: u64 = RANK_1 << 40;
+pub const RANK_7: u64 = RANK_1 << 40;
+pub const RANK_8: u64 = RANK_1 << 48;
+
 // --- Pieces ---
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
