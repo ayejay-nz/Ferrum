@@ -1,4 +1,6 @@
-use crate::types::{Colour, Square};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr};
+
+use crate::types::Square;
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -50,11 +52,86 @@ impl Bitboard {
     }
 }
 
+// bb & bb
+impl BitAnd for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+impl BitAndAssign for Bitboard {
+    #[inline(always)]
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 &= rhs.0
+    }
+}
+
+// bb | bb
+impl BitOr for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+impl BitOrAssign for Bitboard {
+    #[inline(always)]
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0
+    }
+}
+
+// bb ^ bb
+impl BitXor for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn bitxor(self, rhs: Self) -> Self {
+        Self(self.0 ^ rhs.0)
+    }
+}
+impl BitXorAssign for Bitboard {
+    #[inline(always)]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.0 ^= rhs.0
+    }
+}
+
+// !bb
+impl Not for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn not(self) -> Self {
+        Self(!self.0)
+    }
+}
+
+// bb << n
+impl Shl<u8> for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn shl(self, rhs: u8) -> Self {
+        Self(self.0 << rhs)
+    }
+}
+
+// bb >> n
+impl Shr<u8> for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn shr(self, rhs: u8) -> Self {
+        Self(self.0 >> rhs)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use crate::position::{Position, StateInfo};
+    use crate::{
+        position::{Position, StateInfo},
+        types::Colour,
+    };
 
     fn set_board(fen: &str) -> (Position, StateInfo) {
         let pos = Position::from_fen(fen);
@@ -130,5 +207,47 @@ mod test {
         );
         assert_eq!(pos.occupancy[2].lsb_bb(), Square::C3.bit());
         assert_eq!(Bitboard::new(0).lsb_bb(), 0u64);
+    }
+
+    #[test]
+    fn bitboard_ops_basic() {
+        let a = Bitboard::new(0x0F0F_0000_0000_F0F0);
+        let b = Bitboard::new(0x00FF_00FF_00FF_00FF);
+
+        assert_eq!((a & b).u64(), 0x000F_0000_0000_00F0);
+        assert_eq!((a | b).u64(), 0x0FFF_00FF_00FF_F0FF);
+        assert_eq!((a ^ b).u64(), 0x0FF0_00FF_00FF_F00F);
+        assert_eq!((!a).u64(), 0xF0F0_FFFF_FFFF_0F0F);
+        assert_eq!((!b).u64(), 0xFF00_FF00_FF00_FF00);
+    }
+
+    #[test]
+    fn bitboard_shift_ops() {
+        let a = Bitboard::new(0xFFFF_0000_0000_FFFF);
+        let b = Bitboard::new(0x0000_0000_0000_0001);
+        let c = Bitboard::new(0xF000_0000_0000_0000);
+
+        assert_eq!((a << 1).u64(), 0xFFFE_0000_0001_FFFE);
+        assert_eq!((a << 8).u64(), 0xFF00_0000_00FF_FF00);
+        assert_eq!((b << 1).u64(), 0x2);
+        assert_eq!((b << 8).u64(), 0x100);
+
+        assert_eq!((a >> 1).u64(), 0x7FFF_8000_0000_7FFF);
+        assert_eq!((a >> 8).u64(), 0x00FF_FF00_0000_00FF);
+        assert_eq!((c >> 1).u64(), 0x7800_0000_0000_0000);
+        assert_eq!((c >> 63).u64(), 0x1);
+    }
+
+    #[test]
+    fn bitboard_assign_ops() {
+        let mut b = Bitboard::new(0xFFFF_0000_0000_FFFF);
+        b &= Bitboard::new(0xFF00_FF00_00FF_00FF);
+        assert_eq!(b.u64(), 0xFF00_0000_0000_00FF);
+
+        b |= Bitboard::new(0xFFF0_0F00_FF00_F000);
+        assert_eq!(b.u64(), 0xFFF0_0F00_FF00_F0FF);
+
+        b ^= Bitboard::new(0xFF00_F000_0FF0_00F0);
+        assert_eq!(b.u64(), 0x00F0_FF00_F0F0_F00F);
     }
 }
