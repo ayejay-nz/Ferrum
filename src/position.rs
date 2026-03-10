@@ -1,5 +1,6 @@
 use crate::{
-    types::{Bitboard, Castling, Colour, Mailbox, Move, Piece, PieceCode, Square},
+    bitboard::Bitboard,
+    types::{Castling, Colour, Mailbox, Move, Piece, PieceCode, Square},
     zobrist::{ZKey, ep_hashable},
 };
 
