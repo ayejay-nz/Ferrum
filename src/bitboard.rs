@@ -124,6 +124,71 @@ impl Shr<u8> for Bitboard {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Bitboards {
+    evasion_masks: [[Bitboard; 64]; 64],
+}
+
+impl Bitboards {
+    fn populate_path(s1: Square, s2: Square, bb_table: &mut [[Bitboard; 64]; 64]) {
+        let mut step = if s2.rank() > s1.rank() {
+            8
+        } else if s2.rank() < s1.rank() {
+            -8
+        } else {
+            0
+        };
+        step += if s2.file() > s1.file() {
+            1
+        } else if s2.file() < s1.file() {
+            -1
+        } else {
+            0
+        };
+
+        let mut sq = s1.u8() as i32 + step;
+        let end = s2.u8() as i32;
+
+        while sq != end {
+            bb_table[s1.idx()][s2.idx()].set_square(Square::new(sq as u8));
+            sq += step;
+        }
+    }
+
+    // Initialise the various bitboard tables
+    pub fn init() -> Self {
+        let mut evasion_masks = [[Bitboard::new(0); 64]; 64];
+
+        for s1 in Square::ALL {
+            for s2 in Square::ALL {
+                if s1 == s2 {
+                    continue;
+                }
+
+                let same_rank = s1.rank() == s2.rank();
+                let same_file = s1.file() == s2.file();
+                let same_diag = s1.rank().abs_diff(s2.rank()) == s1.file().abs_diff(s2.file());
+
+                if same_rank || same_file || same_diag {
+                    Self::populate_path(s1, s2, &mut evasion_masks);
+                }
+
+                // Include destination square always for check evasion (knights)
+                evasion_masks[s1.idx()][s2.idx()].set_square(s2);
+            }
+        }
+
+        Self { evasion_masks }
+    }
+
+    /// Returns a bitboard representing the squares semi-open segment between the two squares 
+    /// s1 and s2 (exc. s1 but inc. s2). If the two squares are not on the same file/rank/diagonal,
+    /// it returns s2. This allows us to generate non-king evasion moves faster.
+    pub fn evasion_mask(&self, s1: Square, s2: Square) -> Bitboard {
+        return self.evasion_masks[s1.idx()][s2.idx()];
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -133,6 +198,7 @@ mod test {
         types::Colour,
     };
 
+    // --- Bitboard ---
     fn set_board(fen: &str) -> (Position, StateInfo) {
         let pos = Position::from_fen(fen);
         let mut state = StateInfo::new();
@@ -249,5 +315,32 @@ mod test {
 
         b ^= Bitboard::new(0xFF00_F000_0FF0_00F0);
         assert_eq!(b.u64(), 0x00F0_FF00_F0F0_F00F);
+    }
+
+    // --- Bitboards ---
+    #[rustfmt::skip]
+    #[test]
+    fn init_bitboards_correctly() {
+        let bbs = Bitboards::init();
+        
+        for i in 0..64 {
+            assert_eq!(bbs.evasion_masks[i][i].0, 0);
+        }
+    
+        // Init same rank correctly
+        assert_eq!(bbs.evasion_masks[Square::A1.idx()][Square::H1.idx()].0, 0xFE);
+        assert_eq!(bbs.evasion_masks[Square::H6.idx()][Square::B6.idx()].0, 0x7E00_0000_0000);
+
+        // Init same file correctly
+        assert_eq!(bbs.evasion_masks[Square::B1.idx()][Square::B8.idx()].0, 0x0202_0202_0202_0200);
+        assert_eq!(bbs.evasion_masks[Square::F7.idx()][Square::F2.idx()].0, 0x0000_2020_2020_2000);
+
+        // Init same diag correctly
+        assert_eq!(bbs.evasion_masks[Square::A1.idx()][Square::H8.idx()].0, 0x8040_2010_0804_0200);
+        assert_eq!(bbs.evasion_masks[Square::E7.idx()][Square::B4.idx()].0, 0x0000_0804_0200_0000);
+
+        // Non-inline squares return only the end square
+        assert_eq!(bbs.evasion_masks[Square::B1.idx()][Square::C7.idx()].0, 0x0004_0000_0000_0000);
+        assert_eq!(bbs.evasion_masks[Square::F7.idx()][Square::G2.idx()].0, 0x4000);
     }
 }
