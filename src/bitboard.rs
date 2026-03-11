@@ -181,7 +181,7 @@ impl Bitboards {
         Self { evasion_masks }
     }
 
-    /// Returns a bitboard representing the squares semi-open segment between the two squares 
+    /// Returns a bitboard representing the squares semi-open segment between the two squares
     /// s1 and s2 (exc. s1 but inc. s2). If the two squares are not on the same file/rank/diagonal,
     /// it returns s2. This allows us to generate non-king evasion moves faster.
     pub fn evasion_mask(&self, s1: Square, s2: Square) -> Bitboard {
@@ -226,19 +226,21 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "assertion failed: self.0 != 0")]
     fn bitboard_lsb_is_correct() {
         let (pos, _) = set_board("8/1B6/5k2/1P5p/6r1/2NK4/8/8 w - - 0 1");
         assert_eq!(pos.occupancy[Colour::White.idx()].lsb(), Square::C3);
         assert_eq!(pos.occupancy[Colour::Black.idx()].lsb(), Square::G4);
         assert_eq!(pos.occupancy[2].lsb(), Square::C3);
+    }
 
-        // Should panic
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "assertion failed: self.0 != 0")]
+    fn bitboard_lsb_panics_on_empty() {
         Bitboard::new(0).lsb();
     }
 
     #[test]
-    #[should_panic(expected = "assertion failed: self.0 != 0")]
     fn bitboard_pop_lsb_is_correct() {
         let (mut pos, _) = set_board("8/1B6/5k2/1P5p/6r1/2NK4/8/8 w - - 0 1");
         let (start, _) = set_board("8/1B6/5k2/1P5p/6r1/2NK4/8/8 w - - 0 1");
@@ -255,8 +257,12 @@ mod test {
             pos.occupancy[Colour::Black.idx()],
             start.occupancy[Colour::Black.idx()]
         );
+    }
 
-        // Should panic
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "assertion failed: self.0 != 0")]
+    fn bitboard_pop_lsb_panics_on_empty() {
         Bitboard::new(0).pop_lsb();
     }
 
