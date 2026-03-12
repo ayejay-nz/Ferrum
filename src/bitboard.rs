@@ -257,6 +257,7 @@ impl Bitboards {
     /// Returns a bitboard representing the squares semi-open segment between the two squares
     /// s1 and s2 (exc. s1 but inc. s2). If the two squares are not on the same file/rank/diagonal,
     /// it returns s2. This allows us to generate non-king evasion moves faster.
+    #[inline(always)]
     pub fn evasion_mask(&self, s1: Square, s2: Square) -> Bitboard {
         return self.evasion_masks[s1.idx()][s2.idx()];
     }
