@@ -125,8 +125,8 @@ pub const RANK_3: u64 = RANK_1 << 16;
 pub const RANK_4: u64 = RANK_1 << 24;
 pub const RANK_5: u64 = RANK_1 << 32;
 pub const RANK_6: u64 = RANK_1 << 40;
-pub const RANK_7: u64 = RANK_1 << 40;
-pub const RANK_8: u64 = RANK_1 << 48;
+pub const RANK_7: u64 = RANK_1 << 48;
+pub const RANK_8: u64 = RANK_1 << 56;
 
 // --- Pieces ---
 #[repr(u8)]
