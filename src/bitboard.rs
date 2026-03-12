@@ -1,12 +1,15 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr};
 
-use crate::types::Square;
+use crate::types::{self, Colour, Direction, Square};
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboard(u64);
 
 impl Bitboard {
+    const FILE_A: Bitboard = Bitboard(types::FILE_A);
+    const FILE_H: Bitboard = Bitboard(types::FILE_H);
+
     #[inline(always)]
     pub const fn new(bb: u64) -> Self {
         Self(bb)
@@ -49,6 +52,21 @@ impl Bitboard {
     #[inline(always)]
     pub const fn lsb_bb(self) -> u64 {
         self.0 & self.0.wrapping_neg()
+    }
+
+    #[inline(always)]
+    pub fn shift(self, d: Direction) -> Self {
+        match d {
+            Direction::North => self << 8,
+            Direction::South => self >> 8,
+            Direction::East => (self & !Self::FILE_H) << 1,
+            Direction::West => (self & !Self::FILE_A) >> 1,
+
+            Direction::NorthEast => (self & !Self::FILE_H) << 9,
+            Direction::NorthWest => (self & !Self::FILE_A) << 7,
+            Direction::SouthEast => (self & !Self::FILE_H) >> 7,
+            Direction::SouthWest => (self & !Self::FILE_A) >> 9,
+        }
     }
 }
 
@@ -127,6 +145,9 @@ impl Shr<u8> for Bitboard {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboards {
     evasion_masks: [[Bitboard; 64]; 64],
+    knight_attacks: [Bitboard; 64],
+    king_attacks: [Bitboard; 64],
+    pawn_attacks: [[Bitboard; 64]; 2],
 }
 
 impl Bitboards {
@@ -155,9 +176,46 @@ impl Bitboards {
         }
     }
 
-    // Initialise the various bitboard tables
+    /// Returns the bitboard of the target square for the given step, or if
+    /// the target square is off the board, returns an empty bitboard
+    fn safe_destination(sq: Square, step: i32) -> Bitboard {
+        let to = Square::new((sq.u8() as i32 + step) as u8);
+        return if to.is_ok() && sq.file().abs_diff(to.file()) <= 2 {
+            to.bitboard()
+        } else {
+            Bitboard::new(0)
+        };
+    }
+
+    fn knight_attack(sq: Square) -> Bitboard {
+        let mut b = Bitboard::new(0);
+        for step in [-17, -15, -10, -6, 6, 10, 15, 17] {
+            b |= Self::safe_destination(sq, step);
+        }
+        b
+    }
+
+    fn king_attack(sq: Square) -> Bitboard {
+        let mut b = Bitboard::new(0);
+        for step in [-9, -8, -7, -1, 1, 7, 8, 9] {
+            b |= Self::safe_destination(sq, step);
+        }
+        b
+    }
+
+    fn pawn_attack(bb: Bitboard, colour: Colour) -> Bitboard {
+        match colour {
+            Colour::White => bb.shift(Direction::NorthEast) | bb.shift(Direction::NorthWest),
+            Colour::Black => bb.shift(Direction::SouthEast) | bb.shift(Direction::SouthWest),
+        }
+    }
+
+    /// Initialise the various bitboard tables
     pub fn init() -> Self {
         let mut evasion_masks = [[Bitboard::new(0); 64]; 64];
+        let mut knight_attacks = [Bitboard::new(0); 64];
+        let mut king_attacks = [Bitboard::new(0); 64];
+        let mut pawn_attacks = [[Bitboard::new(0); 64]; 2];
 
         for s1 in Square::ALL {
             for s2 in Square::ALL {
@@ -178,7 +236,22 @@ impl Bitboards {
             }
         }
 
-        Self { evasion_masks }
+        // Generate attacking masks for knight, king, and pawns
+        for sq in Square::ALL {
+            knight_attacks[sq.idx()] = Self::knight_attack(sq);
+            king_attacks[sq.idx()] = Self::king_attack(sq);
+
+            for colour in [Colour::White, Colour::Black] {
+                pawn_attacks[colour.idx()][sq.idx()] = Self::pawn_attack(sq.bitboard(), colour);
+            }
+        }
+
+        Self {
+            evasion_masks,
+            knight_attacks,
+            king_attacks,
+            pawn_attacks,
+        }
     }
 
     /// Returns a bitboard representing the squares semi-open segment between the two squares
@@ -326,7 +399,7 @@ mod test {
     // --- Bitboards ---
     #[rustfmt::skip]
     #[test]
-    fn init_bitboards_correctly() {
+    fn init_evasion_masks_correctly() {
         let bbs = Bitboards::init();
         
         for i in 0..64 {
@@ -348,5 +421,99 @@ mod test {
         // Non-inline squares return only the end square
         assert_eq!(bbs.evasion_masks[Square::B1.idx()][Square::C7.idx()].0, 0x0004_0000_0000_0000);
         assert_eq!(bbs.evasion_masks[Square::F7.idx()][Square::G2.idx()].0, 0x4000);
+    }
+
+    #[test]
+    fn init_king_attacks_correctly() {
+        let bbs = Bitboards::init();
+
+        // Check that center squares are correct
+        let expected_e5 = Square::D6.bitboard()
+            | Square::E6.bitboard()
+            | Square::F6.bitboard()
+            | Square::F5.bitboard()
+            | Square::F4.bitboard()
+            | Square::E4.bitboard()
+            | Square::D4.bitboard()
+            | Square::D5.bitboard();
+
+        assert_eq!(bbs.king_attacks[Square::E5.idx()], expected_e5);
+
+        // Check that edge squares are correct
+        let expected_a8 = Square::A7.bitboard() | Square::B7.bitboard() | Square::B8.bitboard();
+
+        assert_eq!(bbs.king_attacks[Square::A8.idx()], expected_a8);
+    }
+
+    #[test]
+    fn init_knight_attacks_correctly() {
+        let bbs = Bitboards::init();
+
+        // Check that center squares are correct
+        let expected_d5 = Square::C7.bitboard()
+            | Square::E7.bitboard()
+            | Square::F6.bitboard()
+            | Square::F4.bitboard()
+            | Square::E3.bitboard()
+            | Square::C3.bitboard()
+            | Square::B4.bitboard()
+            | Square::B6.bitboard();
+
+        assert_eq!(bbs.knight_attacks[Square::D5.idx()], expected_d5);
+
+        // Check that edge squares are correct
+        let expected_h2 = Square::G4.bitboard() | Square::F3.bitboard() | Square::F1.bitboard();
+
+        assert_eq!(bbs.knight_attacks[Square::H2.idx()], expected_h2);
+    }
+
+    #[test]
+    fn init_pawn_attacks_correctly() {
+        let bbs = Bitboards::init();
+
+        // Ensure white and black attacks are not equal
+        assert_ne!(
+            bbs.pawn_attacks[Colour::White.idx()][Square::E4.idx()],
+            bbs.pawn_attacks[Colour::Black.idx()][Square::E4.idx()]
+        );
+
+        // Check center attacks
+        let white_expected_d4 = Square::C5.bitboard() | Square::E5.bitboard();
+        let black_expected_d4 = Square::C3.bitboard() | Square::E3.bitboard();
+
+        assert_eq!(
+            bbs.pawn_attacks[Colour::White.idx()][Square::D4.idx()],
+            white_expected_d4
+        );
+        assert_eq!(
+            bbs.pawn_attacks[Colour::Black.idx()][Square::D4.idx()],
+            black_expected_d4
+        );
+
+        // Check edge square attacks
+        let white_expected_a5 = Square::B6.bitboard();
+        let black_expected_h6 = Square::G5.bitboard();
+
+        assert_eq!(
+            bbs.pawn_attacks[Colour::White.idx()][Square::A5.idx()],
+            white_expected_a5
+        );
+        assert_eq!(
+            bbs.pawn_attacks[Colour::Black.idx()][Square::H6.idx()],
+            black_expected_h6
+        );
+
+        // Check promotion rank squares
+        let white_expected_c8 = Bitboard::new(0);
+        let black_expected_d1 = Bitboard::new(0);
+
+        assert_eq!(
+            bbs.pawn_attacks[Colour::White.idx()][Square::C8.idx()],
+            white_expected_c8
+        );
+        assert_eq!(
+            bbs.pawn_attacks[Colour::Black.idx()][Square::D1.idx()],
+            black_expected_d1
+        );
     }
 }

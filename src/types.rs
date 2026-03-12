@@ -88,6 +88,11 @@ impl Square {
     pub const fn bitboard(self) -> Bitboard {
         Bitboard::new(self.bit())
     }
+
+    #[inline(always)]
+    pub const fn is_ok(self) -> bool {
+        self.0 >= Self::A1.0 && self.0 <= Self::H8.0
+    }
 }
 
 impl Default for Square {
