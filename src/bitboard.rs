@@ -260,6 +260,21 @@ impl Bitboards {
     pub fn evasion_mask(&self, s1: Square, s2: Square) -> Bitboard {
         return self.evasion_masks[s1.idx()][s2.idx()];
     }
+
+    #[inline(always)]
+    pub fn king_attacks(&self, sq: Square) -> Bitboard {
+        self.king_attacks[sq.idx()]
+    }
+
+    #[inline(always)]
+    pub fn knight_attacks(&self, sq: Square) -> Bitboard {
+        self.knight_attacks[sq.idx()]
+    }
+
+    #[inline(always)]
+    pub fn pawn_attacks(&self, sq: Square, colour: Colour) -> Bitboard {
+        self.pawn_attacks[colour.idx()][sq.idx()]
+    }
 }
 
 #[cfg(test)]
