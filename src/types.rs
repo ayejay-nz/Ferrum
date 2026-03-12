@@ -97,17 +97,18 @@ impl Default for Square {
 }
 
 // --- Board Info ---
-pub type Direction = i8;
-
-pub const NORTH: Direction = 8;
-pub const EAST: Direction = 1;
-pub const SOUTH: Direction = -NORTH;
-pub const WEST: Direction = -EAST;
-
-pub const NORTH_EAST: Direction = NORTH + EAST;
-pub const NORTH_WEST: Direction = NORTH + WEST;
-pub const SOUTH_EAST: Direction = SOUTH + EAST;
-pub const SOUTH_WEST: Direction = SOUTH + WEST;
+#[repr(i8)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Direction {
+    North = 8,
+    East = 1,
+    South = -8,
+    West = -1,
+    NorthEast = 9,
+    NorthWest = 7,
+    SouthEast = -7,
+    SouthWest = -9,
+}
 
 pub const FILE_A: u64 = 0x0101010101010101;
 pub const FILE_B: u64 = FILE_A << 1;
