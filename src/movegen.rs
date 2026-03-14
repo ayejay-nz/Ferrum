@@ -1,7 +1,7 @@
 use crate::{
     bitboard::{Bitboard, Bitboards},
     position::Position,
-    types::{Move, MoveFlag, Piece, Square},
+    types::{Colour, Direction, Move, MoveFlag, Piece, Square},
 };
 
 pub const MAX_MOVES: usize = 256;
@@ -64,6 +64,28 @@ fn push_moves(from: Square, targets: Bitboard, opp_occ: Bitboard, moves: &mut Mo
     }
 }
 
+fn push_pawn_moves(offset: i8, targets: &mut Bitboard, flag: MoveFlag, moves: &mut MoveList) {
+    while !targets.is_empty() {
+        let to = targets.pop_lsb();
+        let from = Square::new((to.u8() as i8 - offset) as u8);
+        moves.push(Move::new(from, to, flag));
+    }
+}
+
+fn push_promotions(offset: i8, to: Square, is_capture: bool, moves: &mut MoveList) {
+    let flag_mask = if is_capture {
+        MoveFlag::Capture
+    } else {
+        MoveFlag::Quiet
+    };
+    let from = Square::new((to.u8() as i8 - offset) as u8);
+
+    moves.push(Move::new(from, to, MoveFlag::PromoQ | flag_mask));
+    moves.push(Move::new(from, to, MoveFlag::PromoN | flag_mask));
+    moves.push(Move::new(from, to, MoveFlag::PromoR | flag_mask));
+    moves.push(Move::new(from, to, MoveFlag::PromoB | flag_mask));
+}
+
 fn generate_king_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     let colour = pos.side_to_move;
     let us = colour.idx();
@@ -100,20 +122,64 @@ fn generate_knight_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) 
 
 fn generate_pawn_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     let colour = pos.side_to_move;
+    let is_white = colour == Colour::White;
     let us = colour.idx();
     let them = colour.opposite().idx();
     let opp_occ = pos.occupancy[them];
+    let all_occ = pos.occupancy[2];
+    let empty_squares = !all_occ;
 
-    let mut pawns = pos.pieces[us][Piece::Pawn.idx()];
-    while !pawns.is_empty() {
-        let from = pawns.pop_lsb();
+    #[rustfmt::skip]
+    let relative_rank_7 = if is_white { Bitboard::RANK_7 } else { Bitboard::RANK_2 };
+    #[rustfmt::skip]
+    let relative_rank_3 = if is_white { Bitboard::RANK_3 } else { Bitboard::RANK_6 };
+    #[rustfmt::skip]
+    let up = if is_white { Direction::North } else { Direction::South };
+    #[rustfmt::skip]
+    let up_left = if is_white { Direction::NorthWest } else { Direction::SouthEast };
+    #[rustfmt::skip]
+    let up_right = if is_white { Direction::NorthEast } else { Direction::SouthWest };
 
-        // Find capture moves
-        // Need to consider promotion and en passant
-        let mut targets = bbs.pawn_attacks(from, colour) & opp_occ;
-        while !targets.is_empty() {
-            let to = targets.pop_lsb();
-            moves.push(Move::new(from, to, MoveFlag::Capture));
+    let pawns = pos.pieces[us][Piece::Pawn.idx()];
+    let pawns_on_7 = pawns & relative_rank_7;
+    let pawns_not_on_7 = pawns ^ pawns_on_7;
+
+    // Consider only regular single and double pushes
+    let mut bb1 = pawns_not_on_7.shift(up) & empty_squares;
+    let mut bb2 = (bb1 & relative_rank_3).shift(up) & empty_squares;
+
+    push_pawn_moves(up as i8, &mut bb1, MoveFlag::Quiet, moves);
+    push_pawn_moves(up as i8 + up as i8, &mut bb2, MoveFlag::DoublePush, moves);
+
+    // Promotions
+    if !pawns_on_7.is_empty() {
+        let mut bb1 = pawns_on_7.shift(up) & empty_squares;
+        let mut bb2 = pawns_on_7.shift(up_left) & opp_occ;
+        let mut bb3 = pawns_on_7.shift(up_right) & opp_occ;
+
+        while !bb1.is_empty() {
+            push_promotions(up as i8, bb1.pop_lsb(), false, moves);
+        }
+        while !bb2.is_empty() {
+            push_promotions(up_left as i8, bb2.pop_lsb(), true, moves);
+        }
+        while !bb3.is_empty() {
+            push_promotions(up_right as i8, bb3.pop_lsb(), true, moves);
+        }
+    }
+
+    // Regular captures and en passant
+    let mut bb1 = pawns_not_on_7.shift(up_left) & opp_occ;
+    let mut bb2 = pawns_not_on_7.shift(up_right) & opp_occ;
+
+    push_pawn_moves(up_left as i8, &mut bb1, MoveFlag::Capture, moves);
+    push_pawn_moves(up_right as i8, &mut bb2, MoveFlag::Capture, moves);
+
+    if !pos.ep_square.is_none() {
+        bb1 = pawns_not_on_7 & bbs.pawn_attacks(pos.ep_square, colour.opposite());
+
+        while !bb1.is_empty() {
+            moves.push(Move::new(bb1.pop_lsb(), pos.ep_square, MoveFlag::EpCapture));
         }
     }
 }
@@ -138,6 +204,30 @@ mod tests {
         e.sort_by_key(|m| (m.from().idx(), m.to().idx(), m.flag().bits()));
 
         assert_eq!(a, e);
+    }
+
+    fn assert_both_sides(
+        pos: &mut Position,
+        bbs: &Bitboards,
+        expected_white: &[Move],
+        expected_black: &[Move],
+        piece: Piece,
+        moves: &mut MoveList,
+    ) {
+        let generate_moves = match piece {
+            Piece::Pawn => generate_pawn_moves,
+            _ => unreachable!(),
+        };
+
+        generate_moves(pos, bbs, moves);
+        assert_same_moves(moves, expected_white);
+
+        moves.clear();
+        pos.side_to_move = pos.side_to_move.opposite();
+        generate_moves(pos, bbs, moves);
+        assert_same_moves(moves, expected_black);
+
+        moves.clear();
     }
 
     #[test]
@@ -249,31 +339,162 @@ mod tests {
         let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
-        // No capturing moves in the starting position
-        generate_pawn_moves(&pos, &bbs, &mut moves);
-        assert_eq!(moves.as_slice(), []);
-
-        pos.side_to_move = pos.side_to_move.opposite();
-        generate_pawn_moves(&pos, &bbs, &mut moves);
-        assert_eq!(moves.as_slice(), []);
-
-        // Generates correct capturing moves
-        let expected_white = [Move::new(Square::C4, Square::D5, MoveFlag::Capture)];
-        let expected_black = [
-            Move::new(Square::D5, Square::C4, MoveFlag::Capture),
-            Move::new(Square::H6, Square::G5, MoveFlag::Capture),
+        // Generates correct pawn moves in starting position
+        let expected_white = [
+            Move::new(Square::A2, Square::A3, MoveFlag::Quiet),
+            Move::new(Square::A2, Square::A4, MoveFlag::DoublePush),
+            Move::new(Square::B2, Square::B3, MoveFlag::Quiet),
+            Move::new(Square::B2, Square::B4, MoveFlag::DoublePush),
+            Move::new(Square::C2, Square::C3, MoveFlag::Quiet),
+            Move::new(Square::C2, Square::C4, MoveFlag::DoublePush),
+            Move::new(Square::D2, Square::D3, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::D4, MoveFlag::DoublePush),
+            Move::new(Square::E2, Square::E3, MoveFlag::Quiet),
+            Move::new(Square::E2, Square::E4, MoveFlag::DoublePush),
+            Move::new(Square::F2, Square::F3, MoveFlag::Quiet),
+            Move::new(Square::F2, Square::F4, MoveFlag::DoublePush),
+            Move::new(Square::G2, Square::G3, MoveFlag::Quiet),
+            Move::new(Square::G2, Square::G4, MoveFlag::DoublePush),
+            Move::new(Square::H2, Square::H3, MoveFlag::Quiet),
+            Move::new(Square::H2, Square::H4, MoveFlag::DoublePush),
         ];
-        let mut pos = Position::from_fen(
-            "r1bqk2r/ppp1bpp1/2n1pn1p/3p2B1/2PP4/2N1PN2/PP2BPPP/R2QK2R w KQkq - 0 1",
+        let expected_black = [
+            Move::new(Square::A7, Square::A6, MoveFlag::Quiet),
+            Move::new(Square::A7, Square::A5, MoveFlag::DoublePush),
+            Move::new(Square::B7, Square::B6, MoveFlag::Quiet),
+            Move::new(Square::B7, Square::B5, MoveFlag::DoublePush),
+            Move::new(Square::C7, Square::C6, MoveFlag::Quiet),
+            Move::new(Square::C7, Square::C5, MoveFlag::DoublePush),
+            Move::new(Square::D7, Square::D6, MoveFlag::Quiet),
+            Move::new(Square::D7, Square::D5, MoveFlag::DoublePush),
+            Move::new(Square::E7, Square::E6, MoveFlag::Quiet),
+            Move::new(Square::E7, Square::E5, MoveFlag::DoublePush),
+            Move::new(Square::F7, Square::F6, MoveFlag::Quiet),
+            Move::new(Square::F7, Square::F5, MoveFlag::DoublePush),
+            Move::new(Square::G7, Square::G6, MoveFlag::Quiet),
+            Move::new(Square::G7, Square::G5, MoveFlag::DoublePush),
+            Move::new(Square::H7, Square::H6, MoveFlag::Quiet),
+            Move::new(Square::H7, Square::H5, MoveFlag::DoublePush),
+        ];
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Pawn,
+            &mut moves,
         );
 
+        // Correctly finds double moves
+        let expected_white = [
+            Move::new(Square::A2, Square::A3, MoveFlag::Quiet),
+            Move::new(Square::A2, Square::A4, MoveFlag::DoublePush),
+            Move::new(Square::H3, Square::H4, MoveFlag::Quiet),
+        ];
+        let expected_black = [
+            Move::new(Square::H7, Square::H6, MoveFlag::Quiet),
+            Move::new(Square::H7, Square::H5, MoveFlag::DoublePush),
+            Move::new(Square::A6, Square::A5, MoveFlag::Quiet),
+        ];
+        let mut pos = Position::from_fen("4k3/7p/p7/8/8/7P/P7/4K3 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Pawn,
+            &mut moves,
+        );
+
+        // Correctly finds capture moves
+        let expected_white = [
+            Move::new(Square::C4, Square::D5, MoveFlag::Capture),
+            Move::new(Square::C4, Square::C5, MoveFlag::Quiet),
+            Move::new(Square::H3, Square::G4, MoveFlag::Capture),
+        ];
+        let expected_black = [
+            Move::new(Square::D5, Square::C4, MoveFlag::Capture),
+            Move::new(Square::D5, Square::D4, MoveFlag::Quiet),
+            Move::new(Square::H4, Square::G3, MoveFlag::Capture),
+        ];
+        let mut pos = Position::from_fen("4k3/8/8/rN1p4/P1P1p1np/n3P1BP/8/4K3 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Pawn,
+            &mut moves,
+        );
+
+        // Correctly finds en passant captures
+        let expected_white = [
+            Move::new(Square::C5, Square::C6, MoveFlag::Quiet),
+            Move::new(Square::E5, Square::E6, MoveFlag::Quiet),
+            Move::new(Square::C5, Square::D6, MoveFlag::EpCapture),
+            Move::new(Square::E5, Square::D6, MoveFlag::EpCapture),
+        ];
+        let pos = Position::from_fen("3k4/8/8/2PpP3/8/8/8/3K4 w - d6 0 1");
         generate_pawn_moves(&pos, &bbs, &mut moves);
         assert_same_moves(&moves, &expected_white);
-
         moves.clear();
-        pos.side_to_move = pos.side_to_move.opposite();
+
+        let expected_black = [
+            Move::new(Square::C4, Square::C3, MoveFlag::Quiet),
+            Move::new(Square::E4, Square::E3, MoveFlag::Quiet),
+            Move::new(Square::C4, Square::D3, MoveFlag::EpCapture),
+            Move::new(Square::E4, Square::D3, MoveFlag::EpCapture),
+        ];
+        let pos = Position::from_fen("3k4/8/8/8/2pPp3/8/8/3K4 b - d3 0 1");
         generate_pawn_moves(&pos, &bbs, &mut moves);
         assert_same_moves(&moves, &expected_black);
+        moves.clear();
+
+        // Correctly finds promotion moves
+        let expected_white = [
+            Move::new(Square::G7, Square::G8, MoveFlag::PromoN),
+            Move::new(Square::G7, Square::G8, MoveFlag::PromoB),
+            Move::new(Square::G7, Square::G8, MoveFlag::PromoR),
+            Move::new(Square::G7, Square::G8, MoveFlag::PromoQ),
+        ];
+        let expected_black = [
+            Move::new(Square::A2, Square::A1, MoveFlag::PromoN),
+            Move::new(Square::A2, Square::A1, MoveFlag::PromoB),
+            Move::new(Square::A2, Square::A1, MoveFlag::PromoR),
+            Move::new(Square::A2, Square::A1, MoveFlag::PromoQ),
+        ];
+        let mut pos = Position::from_fen("3k4/6P1/8/8/8/8/p7/3K4 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Pawn,
+            &mut moves,
+        );
+
+        // Correctly finds capturing promotions
+        let expected_white = [
+            Move::new(Square::H7, Square::G8, MoveFlag::PromoCaptureN),
+            Move::new(Square::H7, Square::G8, MoveFlag::PromoCaptureB),
+            Move::new(Square::H7, Square::G8, MoveFlag::PromoCaptureR),
+            Move::new(Square::H7, Square::G8, MoveFlag::PromoCaptureQ),
+        ];
+        let expected_black = [
+            Move::new(Square::G2, Square::F1, MoveFlag::PromoCaptureN),
+            Move::new(Square::G2, Square::F1, MoveFlag::PromoCaptureB),
+            Move::new(Square::G2, Square::F1, MoveFlag::PromoCaptureR),
+            Move::new(Square::G2, Square::F1, MoveFlag::PromoCaptureQ),
+        ];
+        let mut pos = Position::from_fen("3k2nr/7P/8/8/8/8/6p1/3K1BN1 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Pawn,
+            &mut moves,
+        );
     }
 
     #[test]
@@ -284,17 +505,50 @@ mod tests {
 
         // Generates correct moves in starting position
         let expected_white = [
+            Move::new(Square::A2, Square::A3, MoveFlag::Quiet),
+            Move::new(Square::A2, Square::A4, MoveFlag::DoublePush),
+            Move::new(Square::B2, Square::B3, MoveFlag::Quiet),
+            Move::new(Square::B2, Square::B4, MoveFlag::DoublePush),
+            Move::new(Square::C2, Square::C3, MoveFlag::Quiet),
+            Move::new(Square::C2, Square::C4, MoveFlag::DoublePush),
+            Move::new(Square::D2, Square::D3, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::D4, MoveFlag::DoublePush),
+            Move::new(Square::E2, Square::E3, MoveFlag::Quiet),
+            Move::new(Square::E2, Square::E4, MoveFlag::DoublePush),
+            Move::new(Square::F2, Square::F3, MoveFlag::Quiet),
+            Move::new(Square::F2, Square::F4, MoveFlag::DoublePush),
+            Move::new(Square::G2, Square::G3, MoveFlag::Quiet),
+            Move::new(Square::G2, Square::G4, MoveFlag::DoublePush),
+            Move::new(Square::H2, Square::H3, MoveFlag::Quiet),
+            Move::new(Square::H2, Square::H4, MoveFlag::DoublePush),
             Move::new(Square::B1, Square::A3, MoveFlag::Quiet),
             Move::new(Square::B1, Square::C3, MoveFlag::Quiet),
             Move::new(Square::G1, Square::F3, MoveFlag::Quiet),
             Move::new(Square::G1, Square::H3, MoveFlag::Quiet),
         ];
         let expected_black = [
+            Move::new(Square::A7, Square::A6, MoveFlag::Quiet),
+            Move::new(Square::A7, Square::A5, MoveFlag::DoublePush),
+            Move::new(Square::B7, Square::B6, MoveFlag::Quiet),
+            Move::new(Square::B7, Square::B5, MoveFlag::DoublePush),
+            Move::new(Square::C7, Square::C6, MoveFlag::Quiet),
+            Move::new(Square::C7, Square::C5, MoveFlag::DoublePush),
+            Move::new(Square::D7, Square::D6, MoveFlag::Quiet),
+            Move::new(Square::D7, Square::D5, MoveFlag::DoublePush),
+            Move::new(Square::E7, Square::E6, MoveFlag::Quiet),
+            Move::new(Square::E7, Square::E5, MoveFlag::DoublePush),
+            Move::new(Square::F7, Square::F6, MoveFlag::Quiet),
+            Move::new(Square::F7, Square::F5, MoveFlag::DoublePush),
+            Move::new(Square::G7, Square::G6, MoveFlag::Quiet),
+            Move::new(Square::G7, Square::G5, MoveFlag::DoublePush),
+            Move::new(Square::H7, Square::H6, MoveFlag::Quiet),
+            Move::new(Square::H7, Square::H5, MoveFlag::DoublePush),
             Move::new(Square::B8, Square::A6, MoveFlag::Quiet),
             Move::new(Square::B8, Square::C6, MoveFlag::Quiet),
             Move::new(Square::G8, Square::F6, MoveFlag::Quiet),
             Move::new(Square::G8, Square::H6, MoveFlag::Quiet),
         ];
+
         generate_pseudo_legal(&pos, &bbs, &mut moves);
         assert_same_moves(&moves, &expected_white);
 
@@ -302,5 +556,7 @@ mod tests {
         pos.side_to_move = pos.side_to_move.opposite();
         generate_pseudo_legal(&pos, &bbs, &mut moves);
         assert_same_moves(&moves, &expected_black);
+
+        moves.clear();
     }
 }

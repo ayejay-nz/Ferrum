@@ -7,8 +7,13 @@ use crate::types::{self, Colour, Direction, Square};
 pub struct Bitboard(u64);
 
 impl Bitboard {
-    const FILE_A: Bitboard = Bitboard(types::FILE_A);
-    const FILE_H: Bitboard = Bitboard(types::FILE_H);
+    pub const FILE_A: Bitboard = Bitboard(types::FILE_A);
+    pub const FILE_H: Bitboard = Bitboard(types::FILE_H);
+
+    pub const RANK_2: Bitboard = Bitboard(types::RANK_2);
+    pub const RANK_3: Bitboard = Bitboard(types::RANK_3);
+    pub const RANK_6: Bitboard = Bitboard(types::RANK_6);
+    pub const RANK_7: Bitboard = Bitboard(types::RANK_7);
 
     #[inline(always)]
     pub const fn new(bb: u64) -> Self {
