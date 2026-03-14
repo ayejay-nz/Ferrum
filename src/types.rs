@@ -293,16 +293,16 @@ impl Mailbox {
 }
 
 // --- Castling ---
-const CASTLING_MASK: [u8; 64] = {
-    let mut masks: [u8; 64] = [0xF; 64];
+const CASTLING_MASK: [Castling; 64] = {
+    let mut masks: [Castling; 64] = [Castling::DEFAULT; 64];
 
-    masks[0] = !Castling::WQ_BIT; // a1 - white loses WQ
-    masks[7] = !Castling::WK_BIT; // h1 - white loses WK
-    masks[4] = !(Castling::WK_BIT | Castling::WQ_BIT); // e1 - white loses BOTH
+    masks[0] = Castling::DEFAULT.without(Castling::WHITE_OOO); // a1 - white loses queenside
+    masks[7] = Castling::DEFAULT.without(Castling::WHITE_OO); // h1 - white loses kingside
+    masks[4] = Castling::DEFAULT.without(Castling::WHITE_CASTLING); // e1 - white loses both
 
-    masks[56] = !Castling::BQ_BIT; // a8 - black loses BQ
-    masks[63] = !Castling::BK_BIT; // h8 - black loses BK
-    masks[60] = !(Castling::BK_BIT | Castling::BQ_BIT); // e8 - black loses BOTH
+    masks[56] = Castling::DEFAULT.without(Castling::BLACK_OOO); // a8 - black loses queenside
+    masks[63] = Castling::DEFAULT.without(Castling::BLACK_OO); // h8 - black loses kingside
+    masks[60] = Castling::DEFAULT.without(Castling::BLACK_CASTLING); // e8 - black loses both
 
     masks
 };
@@ -314,30 +314,33 @@ pub enum CastlingType {
     Queenside = 1,
 }
 
-#[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct Castling(u8);
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+    pub struct Castling: u8 {
+        const NONE = 0;
+
+        const WHITE_OO = 1 << 0;
+        const WHITE_OOO = 1 << 1;
+        const BLACK_OO = 1 << 2;
+        const BLACK_OOO = 1 << 3;
+
+        const KINGSIDE = Self::WHITE_OO.bits() | Self::BLACK_OO.bits();
+        const QUEENSIDE = Self::WHITE_OOO.bits() | Self::BLACK_OOO.bits();
+        const WHITE_CASTLING = Self::WHITE_OO.bits() | Self::WHITE_OOO.bits();
+        const BLACK_CASTLING = Self::BLACK_OO.bits() | Self::BLACK_OOO.bits();
+        const DEFAULT = Self::WHITE_CASTLING.bits() | Self::BLACK_CASTLING.bits();
+    }
+}
 
 impl Castling {
-    pub const WK_BIT: u8 = 1 << 0;
-    pub const WQ_BIT: u8 = 1 << 1;
-    pub const BK_BIT: u8 = 1 << 2;
-    pub const BQ_BIT: u8 = 1 << 3;
-
-    pub const WK: Self = Self(Self::WK_BIT);
-    pub const WQ: Self = Self(Self::WQ_BIT);
-    pub const BK: Self = Self(Self::BK_BIT);
-    pub const BQ: Self = Self(Self::BQ_BIT);
-
-    pub const NONE: Self = Self(0);
-    pub const DEFAULT: Self = Self(Self::WK_BIT | Self::WQ_BIT | Self::BK_BIT | Self::BQ_BIT);
-
     pub const fn new(bits: u8) -> Self {
-        Self(bits)
+        Self::from_bits_retain(bits)
     }
 
-    pub const fn bits(self) -> u8 {
-        self.0
+    #[inline(always)]
+    pub const fn without(self, other: Self) -> Self {
+        Self::from_bits_retain(self.bits() & !other.bits())
     }
 
     #[inline(always)]
@@ -347,7 +350,7 @@ impl Castling {
         // 1. King moving (loses both)
         // 2. Rook move (loses one)
         // 3. Rook captured (opponent loses one)
-        self.0 &= CASTLING_MASK[from.idx()] & CASTLING_MASK[to.idx()];
+        *self &= CASTLING_MASK[from.idx()] & CASTLING_MASK[to.idx()];
     }
 
     #[inline(always)]
@@ -363,22 +366,29 @@ impl Castling {
 
     #[inline(always)]
     pub fn can_white_ks(self) -> bool {
-        (self.0 & Self::WK_BIT) != 0
+        self.contains(Castling::WHITE_OO)
     }
 
     #[inline(always)]
     pub fn can_white_qs(self) -> bool {
-        (self.0 & Self::WQ_BIT) != 0
+        self.contains(Castling::WHITE_OOO)
     }
 
     #[inline(always)]
     pub fn can_black_ks(self) -> bool {
-        (self.0 & Self::BK_BIT) != 0
+        self.contains(Castling::BLACK_OO)
     }
 
     #[inline(always)]
     pub fn can_black_qs(self) -> bool {
-        (self.0 & Self::BQ_BIT) != 0
+        self.contains(Castling::BLACK_OOO)
+    }
+}
+
+impl Default for Castling {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
@@ -612,19 +622,13 @@ mod tests {
         // Moving king clears castling rights
         let king_move = Move::new(Square::E1, Square::F1, MoveFlag::Quiet);
         pos.make_move(king_move, &mut state);
-        assert_eq!(
-            pos.castling_rights.bits(),
-            Castling::BK_BIT | Castling::BQ_BIT
-        );
+        assert_eq!(pos.castling_rights, Castling::BLACK_CASTLING);
         pos.undo_move(king_move, &state);
 
         // Moving rook clears castling rights and rook capture clears opposition rights
         let rook_move = Move::new(Square::H1, Square::H8, MoveFlag::Capture);
         pos.make_move(rook_move, &mut state);
-        assert_eq!(
-            pos.castling_rights.bits(),
-            Castling::BQ_BIT | Castling::WQ_BIT
-        );
+        assert_eq!(pos.castling_rights, Castling::QUEENSIDE);
         pos.undo_move(rook_move, &state);
     }
 

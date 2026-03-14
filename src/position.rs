@@ -273,19 +273,19 @@ impl Position {
         };
 
         // Castling
-        let mut rights = 0;
+        let mut rights = Castling::NONE;
         if fen_parts[2] != "-" {
             for c in fen_parts[2].chars() {
                 match c {
-                    'K' => rights |= Castling::WK_BIT,
-                    'Q' => rights |= Castling::WQ_BIT,
-                    'k' => rights |= Castling::BK_BIT,
-                    'q' => rights |= Castling::BQ_BIT,
+                    'K' => rights |= Castling::WHITE_OO,
+                    'Q' => rights |= Castling::WHITE_OOO,
+                    'k' => rights |= Castling::BLACK_OO,
+                    'q' => rights |= Castling::BLACK_OOO,
                     _ => unreachable!(),
                 }
             }
         }
-        position.castling_rights = Castling::new(rights);
+        position.castling_rights = rights;
 
         // En passant
         position.ep_square = if fen_parts[3] == "-" {
@@ -355,7 +355,7 @@ mod test {
 
     struct GoalState {
         ep_square: Square,
-        castling_rights: u8,
+        castling_rights: Castling,
         halfmove_clock: u8,
         fullmove_counter: u16,
     }
@@ -371,7 +371,7 @@ mod test {
             )
         );
         assert_eq!(state.ep_square, goal.ep_square);
-        assert_eq!(state.castling_rights.bits(), goal.castling_rights);
+        assert_eq!(state.castling_rights, goal.castling_rights);
         assert_eq!(state.captured_piece, None);
         assert_eq!(state.halfmove_clock, goal.halfmove_clock);
         assert_eq!(state.fullmove_counter, goal.fullmove_counter);
@@ -470,7 +470,7 @@ mod test {
 
         let goal = GoalState {
             ep_square: Square::NONE,
-            castling_rights: Castling::DEFAULT.bits(),
+            castling_rights: Castling::DEFAULT,
             halfmove_clock: 0,
             fullmove_counter: 1,
         };
@@ -483,7 +483,7 @@ mod test {
 
         let goal = GoalState {
             ep_square: Square::B3,
-            castling_rights: Castling::WK_BIT | Castling::WQ_BIT,
+            castling_rights: Castling::WHITE_CASTLING,
             halfmove_clock: 0,
             fullmove_counter: 7,
         };
