@@ -134,8 +134,8 @@ mod tests {
         let mut a = actual.as_slice().to_vec();
         let mut e = expected.to_vec();
 
-        a.sort_by_key(|m| (m.from().idx(), m.to().idx(), m.flag()));
-        e.sort_by_key(|m| (m.from().idx(), m.to().idx(), m.flag()));
+        a.sort_by_key(|m| (m.from().idx(), m.to().idx(), m.flag().bits()));
+        e.sort_by_key(|m| (m.from().idx(), m.to().idx(), m.flag().bits()));
 
         assert_eq!(a, e);
     }

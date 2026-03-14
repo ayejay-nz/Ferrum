@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 use crate::bitboard::Bitboard;
 
 // --- Squares ---
@@ -381,25 +383,34 @@ impl Castling {
 }
 
 // --- Moves ---
-#[repr(u8)]
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum MoveFlag {
-    Quiet = 0b0000,
-    DoublePush = 0b0001,
-    KingCastle = 0b0010,
-    QueenCastle = 0b0011,
-    Capture = 0b0100,
-    EpCapture = 0b0101,
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+    pub struct MoveFlag: u8 {
+        const Quiet = 0b0000;
+        const DoublePush = 0b0001;
+        const KingCastle = 0b0010;
+        const QueenCastle = 0b0011;
+        const Capture = 0b0100;
+        const EpCapture = 0b0101;
 
-    PromoN = 0b1000,
-    PromoB = 0b1001,
-    PromoR = 0b1010,
-    PromoQ = 0b1011,
+        const PromoN = 0b1000;
+        const PromoB = 0b1001;
+        const PromoR = 0b1010;
+        const PromoQ = 0b1011;
 
-    PromoCaptureN = 0b1100,
-    PromoCaptureB = 0b1101,
-    PromoCaptureR = 0b1110,
-    PromoCaptureQ = 0b1111,
+        const PromoCaptureN = 0b1100;
+        const PromoCaptureB = 0b1101;
+        const PromoCaptureR = 0b1110;
+        const PromoCaptureQ = 0b1111;
+    }
+}
+
+impl MoveFlag {
+    #[inline(always)]
+    pub const fn u16(self) -> u16 {
+        self.bits() as u16
+    }
 }
 
 // Bits 0-5: source square
@@ -414,7 +425,7 @@ impl Move {
 
     #[inline(always)]
     pub const fn new(from: Square, to: Square, flag: MoveFlag) -> Self {
-        Self(from.u16() | to.u16() << 6 | (flag as u16) << 12)
+        Self(from.u16() | to.u16() << 6 | flag.u16() << 12)
     }
 
     #[inline(always)]
@@ -428,18 +439,18 @@ impl Move {
     }
 
     #[inline(always)]
-    pub fn flag(self) -> u8 {
-        (self.0 >> 12) as u8
+    pub fn flag(self) -> MoveFlag {
+        MoveFlag::from_bits_retain((self.0 >> 12) as u8)
     }
 
     #[inline(always)]
     pub fn is_capture(self) -> bool {
-        (self.flag() & 0b0100) != 0
+        self.flag().contains(MoveFlag::Capture)
     }
 
     #[inline(always)]
     pub fn is_ep_capture(self) -> bool {
-        self.flag() == 0b0101
+        self.flag() == MoveFlag::EpCapture
     }
 
     #[inline(always)]
@@ -454,7 +465,7 @@ impl Move {
 
     #[inline(always)]
     pub fn is_promotion(self) -> bool {
-        (self.flag() & 0b1000) != 0
+        self.flag().bits() & 0b1000 != 0
     }
 
     #[inline(always)]
@@ -463,7 +474,7 @@ impl Move {
             return None;
         }
         // Last two bits determine promotion type
-        match self.flag() & 0b0011 {
+        match self.flag().bits() & 0b0011 {
             0 => Some(Piece::Knight),
             1 => Some(Piece::Bishop),
             2 => Some(Piece::Rook),
@@ -480,15 +491,15 @@ impl Move {
     #[inline(always)]
     pub fn castle_type(self) -> Option<CastlingType> {
         match self.flag() {
-            x if x == MoveFlag::KingCastle as u8 => Some(CastlingType::Kingside),
-            x if x == MoveFlag::QueenCastle as u8 => Some(CastlingType::Queenside),
+            x if x == MoveFlag::KingCastle => Some(CastlingType::Kingside),
+            x if x == MoveFlag::QueenCastle => Some(CastlingType::Queenside),
             _ => None,
         }
     }
 
     #[inline(always)]
     pub fn is_double_push(self) -> bool {
-        self.flag() == 0b0001
+        self.flag() == MoveFlag::DoublePush
     }
 }
 
@@ -652,7 +663,7 @@ mod tests {
 
     #[test]
     fn move_flag_is_correct() {
-        assert_eq!(PAWN_E4.flag(), MoveFlag::DoublePush as u8)
+        assert_eq!(PAWN_E4.flag(), MoveFlag::DoublePush)
     }
 
     #[test]
