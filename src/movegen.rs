@@ -216,6 +216,8 @@ mod tests {
     ) {
         let generate_moves = match piece {
             Piece::Pawn => generate_pawn_moves,
+            Piece::Knight => generate_knight_moves,
+            Piece::King => generate_king_moves,
             _ => unreachable!(),
         };
 
@@ -249,19 +251,19 @@ mod tests {
             Move::new(Square::G8, Square::F6, MoveFlag::Quiet),
             Move::new(Square::G8, Square::H6, MoveFlag::Quiet),
         ];
-        generate_knight_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_white);
-
-        moves.clear();
-        pos.side_to_move = pos.side_to_move.opposite();
-        generate_knight_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_black);
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Knight,
+            &mut moves,
+        );
 
         // Generates correct moves in other position
         let mut pos = Position::from_fen(
             "r1bqkb1r/ppp2ppp/n3pn2/2Pp2B1/3P4/2N2N2/PP2PPPP/R2QKB1R w KQkq - 0 1",
         );
-        moves.clear();
 
         let expected_white = [
             Move::new(Square::C3, Square::D5, MoveFlag::Capture),
@@ -284,13 +286,14 @@ mod tests {
             Move::new(Square::F6, Square::E4, MoveFlag::Quiet),
             Move::new(Square::F6, Square::D7, MoveFlag::Quiet),
         ];
-        generate_knight_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_white);
-
-        moves.clear();
-        pos.side_to_move = pos.side_to_move.opposite();
-        generate_knight_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_black);
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Knight,
+            &mut moves,
+        );
     }
 
     #[test]
@@ -300,12 +303,7 @@ mod tests {
         let mut moves = MoveList::new();
 
         // Default position should yield no king moves
-        generate_king_moves(&pos, &bbs, &mut moves);
-        assert_eq!(moves.as_slice(), []);
-
-        pos.side_to_move = pos.side_to_move.opposite();
-        generate_king_moves(&pos, &bbs, &mut moves);
-        assert_eq!(moves.as_slice(), []);
+        assert_both_sides(&mut pos, &bbs, &[], &[], Piece::King, &mut moves);
 
         // Gets correct king moves in other position
         let expected_white = [
@@ -323,14 +321,14 @@ mod tests {
             Move::new(Square::A8, Square::A7, MoveFlag::Quiet),
         ];
         let mut pos = Position::from_fen("k7/1N3rp1/3Kp2p/4P2P/8/6B1/8/8 w - - 0 1");
-
-        generate_king_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_white);
-
-        moves.clear();
-        pos.side_to_move = pos.side_to_move.opposite();
-        generate_king_moves(&pos, &bbs, &mut moves);
-        assert_same_moves(&moves, &expected_black);
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::King,
+            &mut moves,
+        );
     }
 
     #[test]
