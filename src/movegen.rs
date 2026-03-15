@@ -212,12 +212,53 @@ fn generate_pawn_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     }
 }
 
+fn generate_bishop_slider_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+    let colour = pos.side_to_move;
+    let us = colour.idx();
+    let them = colour.opposite().idx();
+    let own_occ = pos.occupancy[us];
+    let opp_occ = pos.occupancy[them];
+    let all_occ = pos.occupancy[2];
+
+    let mut bishop_sliders =
+        pos.pieces[us][Piece::Bishop.idx()] | pos.pieces[us][Piece::Queen.idx()];
+
+    while !bishop_sliders.is_empty() {
+        let from = bishop_sliders.pop_lsb();
+        // Mask of all quiet/capture moves
+        let targets = bbs.bishop_attacks(from, all_occ) & !own_occ;
+
+        push_moves(from, targets, opp_occ, moves);
+    }
+}
+
+fn generate_rook_slider_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+    let colour = pos.side_to_move;
+    let us = colour.idx();
+    let them = colour.opposite().idx();
+    let own_occ = pos.occupancy[us];
+    let opp_occ = pos.occupancy[them];
+    let all_occ = pos.occupancy[2];
+
+    let mut rook_sliders = pos.pieces[us][Piece::Rook.idx()] | pos.pieces[us][Piece::Queen.idx()];
+
+    while !rook_sliders.is_empty() {
+        let from = rook_sliders.pop_lsb();
+        // Mask of all quiet/capture moves
+        let targets = bbs.rook_attacks(from, all_occ) & !own_occ;
+
+        push_moves(from, targets, opp_occ, moves);
+    }
+}
+
 pub fn generate_pseudo_legal(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     moves.clear();
 
     generate_pawn_moves(pos, bbs, moves);
     generate_knight_moves(pos, bbs, moves);
     generate_king_moves(pos, bbs, moves);
+    generate_bishop_slider_moves(pos, bbs, moves);
+    generate_rook_slider_moves(pos, bbs, moves);
 }
 
 #[cfg(test)]
@@ -245,6 +286,8 @@ mod tests {
         let generate_moves = match piece {
             Piece::Pawn => generate_pawn_moves,
             Piece::Knight => generate_knight_moves,
+            Piece::Bishop => generate_bishop_slider_moves,
+            Piece::Rook => generate_rook_slider_moves,
             Piece::King => generate_king_moves,
             _ => unreachable!(),
         };
@@ -561,6 +604,106 @@ mod tests {
             &expected_white,
             &expected_black,
             Piece::Pawn,
+            &mut moves,
+        );
+    }
+
+    #[test]
+    fn generates_correct_bishop_sliders() {
+        let mut pos = Position::default();
+        let bbs = Bitboards::init();
+        let mut moves = MoveList::new();
+
+        // No moves in the default position
+        let expected_white = [];
+        let expected_black = [];
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Bishop,
+            &mut moves,
+        );
+
+        let expected_white = [
+            Move::new(Square::C2, Square::B1, MoveFlag::Quiet),
+            Move::new(Square::C2, Square::B3, MoveFlag::Quiet),
+            Move::new(Square::C2, Square::D3, MoveFlag::Quiet),
+            Move::new(Square::C2, Square::E4, MoveFlag::Capture),
+            Move::new(Square::D1, Square::E2, MoveFlag::Quiet),
+            Move::new(Square::D1, Square::F3, MoveFlag::Quiet),
+            Move::new(Square::D1, Square::G4, MoveFlag::Capture),
+        ];
+        let expected_black = [
+            Move::new(Square::D8, Square::C7, MoveFlag::Capture),
+            Move::new(Square::D8, Square::E7, MoveFlag::Quiet),
+            Move::new(Square::G4, Square::H5, MoveFlag::Quiet),
+            Move::new(Square::G4, Square::H3, MoveFlag::Quiet),
+            Move::new(Square::G4, Square::F3, MoveFlag::Quiet),
+            Move::new(Square::G4, Square::E2, MoveFlag::Quiet),
+            Move::new(Square::G4, Square::D1, MoveFlag::Capture),
+        ];
+        let mut pos = Position::from_fen("2rqk3/2N5/5p2/3p1n2/N2Pp1b1/6n1/2B5/3QK3 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Bishop,
+            &mut moves,
+        );
+    }
+
+    #[test]
+    fn generates_correct_rook_sliders() {
+        let mut pos = Position::default();
+        let bbs = Bitboards::init();
+        let mut moves = MoveList::new();
+
+        // No moves in the default position
+        let expected_white = [];
+        let expected_black = [];
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Rook,
+            &mut moves,
+        );
+
+        let expected_white = [
+            Move::new(Square::B1, Square::C1, MoveFlag::Quiet),
+            Move::new(Square::B1, Square::D1, MoveFlag::Quiet),
+            Move::new(Square::B1, Square::B2, MoveFlag::Quiet),
+            Move::new(Square::B1, Square::B3, MoveFlag::Quiet),
+            Move::new(Square::B1, Square::B4, MoveFlag::Capture),
+            Move::new(Square::D2, Square::D1, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::E2, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::F2, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::C2, MoveFlag::Capture),
+            Move::new(Square::D2, Square::D3, MoveFlag::Quiet),
+            Move::new(Square::D2, Square::D4, MoveFlag::Capture),
+        ];
+        let expected_black = [
+            Move::new(Square::B4, Square::C4, MoveFlag::Quiet),
+            Move::new(Square::B4, Square::B3, MoveFlag::Quiet),
+            Move::new(Square::B4, Square::B2, MoveFlag::Quiet),
+            Move::new(Square::B4, Square::B1, MoveFlag::Capture),
+            Move::new(Square::D4, Square::C4, MoveFlag::Quiet),
+            Move::new(Square::D4, Square::E4, MoveFlag::Quiet),
+            Move::new(Square::D4, Square::F4, MoveFlag::Capture),
+            Move::new(Square::D4, Square::D3, MoveFlag::Quiet),
+            Move::new(Square::D4, Square::D2, MoveFlag::Capture),
+        ];
+        let mut pos = Position::from_fen("4k3/8/8/1n1p4/pr1q1N2/8/2bQ2B1/BR2K3 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::Rook,
             &mut moves,
         );
     }

@@ -95,6 +95,16 @@ impl Square {
     pub const fn is_ok(self) -> bool {
         self.0 >= Self::A1.0 && self.0 <= Self::H8.0
     }
+
+    #[inline(always)]
+    pub fn rank_bb(self) -> Bitboard {
+        Bitboard::RANK_1 << (self.rank() * 8)
+    }
+
+    #[inline(always)]
+    pub fn file_bb(self) -> Bitboard {
+        Bitboard::FILE_A << self.file()
+    }
 }
 
 impl Default for Square {

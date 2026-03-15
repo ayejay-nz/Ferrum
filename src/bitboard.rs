@@ -1,6 +1,9 @@
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr};
+use std::{
+    arch::x86_64::_pext_u64,
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr, Sub},
+};
 
-use crate::types::{self, Colour, Direction, Square};
+use crate::types::{self, Colour, Direction, Piece, Square};
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -10,10 +13,12 @@ impl Bitboard {
     pub const FILE_A: Bitboard = Bitboard(types::FILE_A);
     pub const FILE_H: Bitboard = Bitboard(types::FILE_H);
 
+    pub const RANK_1: Bitboard = Bitboard(types::RANK_1);
     pub const RANK_2: Bitboard = Bitboard(types::RANK_2);
     pub const RANK_3: Bitboard = Bitboard(types::RANK_3);
     pub const RANK_6: Bitboard = Bitboard(types::RANK_6);
     pub const RANK_7: Bitboard = Bitboard(types::RANK_7);
+    pub const RANK_8: Bitboard = Bitboard(types::RANK_8);
 
     #[inline(always)]
     pub const fn new(bb: u64) -> Self {
@@ -72,6 +77,11 @@ impl Bitboard {
             Direction::SouthEast => (self & !Self::FILE_H) >> 7,
             Direction::SouthWest => (self & !Self::FILE_A) >> 9,
         }
+    }
+
+    #[inline(always)]
+    pub fn bit_count(self) -> u32 {
+        self.0.count_ones()
     }
 }
 
@@ -147,12 +157,42 @@ impl Shr<u8> for Bitboard {
     }
 }
 
+// bb - bb
+impl Sub for Bitboard {
+    type Output = Self;
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self {
+        // Use wrapping_sub because the Carry-Rippler trick relies on it
+        Self(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Magic {
+    offset: usize,
+    mask: Bitboard,
+}
+
+impl Default for Magic {
+    #[inline(always)]
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            mask: Bitboard::new(0),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboards {
     evasion_masks: [[Bitboard; 64]; 64],
     knight_attacks: [Bitboard; 64],
     king_attacks: [Bitboard; 64],
     pawn_attacks: [[Bitboard; 64]; 2],
+    bishop_masks: [Magic; 64],
+    bishop_attacks: [Bitboard; 0x1480],
+    rook_masks: [Magic; 64],
+    rook_attacks: [Bitboard; 0x19000],
 }
 
 impl Bitboards {
@@ -215,12 +255,83 @@ impl Bitboards {
         }
     }
 
+    fn sliding_attack(piece: Piece, sq: Square, occ: Bitboard) -> Bitboard {
+        let mut attacks = Bitboard::new(0);
+        let rook_directions = [
+            Direction::North,
+            Direction::South,
+            Direction::East,
+            Direction::West,
+        ];
+        let bishop_directions = [
+            Direction::NorthEast,
+            Direction::NorthWest,
+            Direction::SouthEast,
+            Direction::SouthWest,
+        ];
+
+        let directions = match piece {
+            Piece::Rook => rook_directions,
+            Piece::Bishop => bishop_directions,
+            _ => unreachable!(),
+        };
+
+        for d in directions {
+            let mut s = sq;
+            while Self::safe_destination(s, d as i32) != Bitboard::new(0) {
+                s = Square::new((s.u8() as i8 + d as i8) as u8);
+                attacks |= s.bitboard();
+                if occ & s.bitboard() != Bitboard::new(0) {
+                    break;
+                }
+            }
+        }
+
+        attacks
+    }
+
+    fn init_pexts(piece: Piece, table: &mut [Bitboard], masks: &mut [Magic]) {
+        let mut current_offset = 0;
+
+        for sq in Square::ALL {
+            // Board edges which are not considered for occupancy
+            let edges = ((Bitboard::RANK_1 | Bitboard::RANK_8) & !sq.rank_bb())
+                | ((Bitboard::FILE_A | Bitboard::FILE_H) & !sq.file_bb());
+
+            let mask = Self::sliding_attack(piece, sq, Bitboard::new(0)) & !edges;
+            masks[sq.idx()].mask = mask;
+            masks[sq.idx()].offset = current_offset;
+
+            // Use the Carry-Rippler trick to iterate over all sub-bitboards of mask
+            let mut b = Bitboard::new(0);
+            loop {
+                unsafe {
+                    table[current_offset + _pext_u64(b.u64(), mask.u64()) as usize] =
+                        Self::sliding_attack(piece, sq, b)
+                };
+
+                b = (b - mask) & mask;
+
+                if b.is_empty() {
+                    break;
+                }
+            }
+
+            current_offset += 1 << mask.bit_count();
+        }
+    }
+
     /// Initialise the various bitboard tables
     pub fn init() -> Self {
         let mut evasion_masks = [[Bitboard::new(0); 64]; 64];
         let mut knight_attacks = [Bitboard::new(0); 64];
         let mut king_attacks = [Bitboard::new(0); 64];
         let mut pawn_attacks = [[Bitboard::new(0); 64]; 2];
+
+        let mut bishop_masks = [Magic::default(); 64];
+        let mut bishop_attacks = [Bitboard::new(0); 0x1480];
+        let mut rook_masks = [Magic::default(); 64];
+        let mut rook_attacks = [Bitboard::new(0); 0x19000];
 
         for s1 in Square::ALL {
             for s2 in Square::ALL {
@@ -251,11 +362,19 @@ impl Bitboards {
             }
         }
 
+        // Generate PEXT bitboards for bishops and rooks
+        Self::init_pexts(Piece::Bishop, &mut bishop_attacks, &mut bishop_masks);
+        Self::init_pexts(Piece::Rook, &mut rook_attacks, &mut rook_masks);
+
         Self {
             evasion_masks,
             knight_attacks,
             king_attacks,
             pawn_attacks,
+            bishop_masks,
+            bishop_attacks,
+            rook_masks,
+            rook_attacks,
         }
     }
 
@@ -280,6 +399,24 @@ impl Bitboards {
     #[inline(always)]
     pub fn pawn_attacks(&self, sq: Square, colour: Colour) -> Bitboard {
         self.pawn_attacks[colour.idx()][sq.idx()]
+    }
+
+    #[inline(always)]
+    pub fn bishop_attacks(&self, sq: Square, occ: Bitboard) -> Bitboard {
+        let magic = self.bishop_masks[sq.idx()];
+        let mask = magic.mask;
+        let offset = magic.offset;
+
+        unsafe { self.bishop_attacks[offset + _pext_u64(occ.u64(), mask.u64()) as usize] }
+    }
+
+    #[inline(always)]
+    pub fn rook_attacks(&self, sq: Square, occ: Bitboard) -> Bitboard {
+        let magic = self.rook_masks[sq.idx()];
+        let mask = magic.mask;
+        let offset = magic.offset;
+
+        unsafe { self.rook_attacks[offset + _pext_u64(occ.u64(), mask.u64()) as usize] }
     }
 }
 
