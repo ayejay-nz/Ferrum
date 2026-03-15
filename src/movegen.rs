@@ -1,7 +1,7 @@
 use crate::{
     bitboard::{Bitboard, Bitboards},
     position::Position,
-    types::{Colour, Direction, Move, MoveFlag, Piece, Square},
+    types::{Castling, CastlingType, Colour, Direction, Move, MoveFlag, Piece, Square},
 };
 
 pub const MAX_MOVES: usize = 256;
@@ -86,20 +86,48 @@ fn push_promotions(offset: i8, to: Square, is_capture: bool, moves: &mut MoveLis
     moves.push(Move::new(from, to, MoveFlag::PromoB | flag_mask));
 }
 
+fn push_castling(king_square: Square, ct: CastlingType, moves: &mut MoveList) {
+    let mv = match ct {
+        CastlingType::Kingside => Move::new(
+            king_square,
+            Square::new(king_square.u8() + 2),
+            MoveFlag::KingCastle,
+        ),
+        CastlingType::Queenside => Move::new(
+            king_square,
+            Square::new(king_square.u8() - 2),
+            MoveFlag::QueenCastle,
+        ),
+    };
+    moves.push(mv);
+}
+
 fn generate_king_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     let colour = pos.side_to_move;
+    let is_white = colour == Colour::White;
     let us = colour.idx();
     let them = colour.opposite().idx();
     let own_occ = pos.occupancy[us];
     let opp_occ = pos.occupancy[them];
 
-    let mut kings = pos.pieces[us][Piece::King.idx()];
-    while !kings.is_empty() {
-        let from = kings.pop_lsb();
-        // Mask of all quiet/capture moves
-        let targets = bbs.king_attacks(from) & !own_occ;
+    #[rustfmt::skip]
+    let king_square = if is_white { pos.white_king_square } else { pos.black_king_square };
+    // Mask of all quiet/capture move squares
+    let targets = bbs.king_attacks(king_square) & !own_occ;
+    push_moves(king_square, targets, opp_occ, moves);
 
-        push_moves(from, targets, opp_occ, moves);
+    // Find castling moves, if any
+    let (ks_right, qs_right) = match colour {
+        Colour::White => (Castling::WHITE_OO, Castling::WHITE_OOO),
+        Colour::Black => (Castling::BLACK_OO, Castling::BLACK_OOO),
+    };
+
+    if pos.can_castle(ks_right) && !pos.castling_impeded(ks_right) {
+        push_castling(king_square, CastlingType::Kingside, moves);
+    }
+
+    if pos.can_castle(qs_right) && !pos.castling_impeded(qs_right) {
+        push_castling(king_square, CastlingType::Queenside, moves);
     }
 }
 
@@ -321,6 +349,48 @@ mod tests {
             Move::new(Square::A8, Square::A7, MoveFlag::Quiet),
         ];
         let mut pos = Position::from_fen("k7/1N3rp1/3Kp2p/4P2P/8/6B1/8/8 w - - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::King,
+            &mut moves,
+        );
+
+        // Correctly generates castling moves
+        let expected_white = [
+            Move::new(Square::E1, Square::G1, MoveFlag::KingCastle),
+            Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle),
+            Move::new(Square::E1, Square::F1, MoveFlag::Quiet),
+            Move::new(Square::E1, Square::D1, MoveFlag::Quiet),
+        ];
+        let expected_black = [
+            Move::new(Square::E8, Square::G8, MoveFlag::KingCastle),
+            Move::new(Square::E8, Square::C8, MoveFlag::QueenCastle),
+            Move::new(Square::E8, Square::F8, MoveFlag::Quiet),
+            Move::new(Square::E8, Square::D8, MoveFlag::Quiet),
+        ];
+        let mut pos = Position::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
+        assert_both_sides(
+            &mut pos,
+            &bbs,
+            &expected_white,
+            &expected_black,
+            Piece::King,
+            &mut moves,
+        );
+
+        let expected_white = [
+            Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle),
+            Move::new(Square::E1, Square::F1, MoveFlag::Quiet),
+            Move::new(Square::E1, Square::D1, MoveFlag::Quiet),
+        ];
+        let expected_black = [
+            Move::new(Square::E8, Square::C8, MoveFlag::QueenCastle),
+            Move::new(Square::E8, Square::D8, MoveFlag::Quiet),
+        ];
+        let mut pos = Position::from_fen("r3kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Qkq - 0 1");
         assert_both_sides(
             &mut pos,
             &bbs,

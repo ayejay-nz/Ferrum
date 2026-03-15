@@ -365,22 +365,22 @@ impl Castling {
     }
 
     #[inline(always)]
-    pub fn can_white_ks(self) -> bool {
+    pub const fn can_white_ks(self) -> bool {
         self.contains(Castling::WHITE_OO)
     }
 
     #[inline(always)]
-    pub fn can_white_qs(self) -> bool {
+    pub const fn can_white_qs(self) -> bool {
         self.contains(Castling::WHITE_OOO)
     }
 
     #[inline(always)]
-    pub fn can_black_ks(self) -> bool {
+    pub const fn can_black_ks(self) -> bool {
         self.contains(Castling::BLACK_OO)
     }
 
     #[inline(always)]
-    pub fn can_black_qs(self) -> bool {
+    pub const fn can_black_qs(self) -> bool {
         self.contains(Castling::BLACK_OOO)
     }
 }

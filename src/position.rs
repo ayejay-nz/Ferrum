@@ -6,6 +6,41 @@ use crate::{
 
 pub const DEFAULT_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+const WHITE_OO_PATH: Bitboard = Bitboard::new(0x60);
+const WHITE_OOO_PATH: Bitboard = Bitboard::new(0xE);
+const BLACK_OO_PATH: Bitboard = Bitboard::new(0x60 << 56);
+const BLACK_OOO_PATH: Bitboard = Bitboard::new(0xE << 56);
+
+const fn build_castling_paths() -> [Bitboard; 16] {
+    let mut paths = [Bitboard::new(0); 16];
+    let mut i = 0;
+
+    while i < 16 {
+        let rights = Castling::new(i as u8);
+        let mut path = 0u64;
+
+        if rights.can_white_ks() {
+            path |= WHITE_OO_PATH.u64()
+        }
+        if rights.can_white_qs() {
+            path |= WHITE_OOO_PATH.u64()
+        }
+        if rights.can_black_ks() {
+            path |= BLACK_OO_PATH.u64()
+        }
+        if rights.can_black_qs() {
+            path |= BLACK_OOO_PATH.u64()
+        }
+
+        paths[i] = Bitboard::new(path);
+        i += 1;
+    }
+
+    paths
+}
+
+const CASTLING_PATHS: [Bitboard; 16] = build_castling_paths();
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct StateInfo {
     pub zkey: ZKey,
@@ -233,6 +268,17 @@ impl Position {
 
         // Replace zkey at the end so we don't accidentally update it placing/removing pieces
         self.zkey = prev.zkey;
+    }
+
+    #[inline(always)]
+    pub fn can_castle(&self, c: Castling) -> bool {
+        self.castling_rights.contains(c)
+    }
+
+    #[inline(always)]
+    pub fn castling_impeded(&self, c: Castling) -> bool {
+        let path = CASTLING_PATHS[c.bits() as usize];
+        self.occupancy[2] & path != Bitboard::new(0)
     }
 
     pub fn from_fen(fen: &str) -> Self {
@@ -585,5 +631,35 @@ mod test {
 
             check_position_correctness(&pos, &start);
         }
+    }
+
+    #[test]
+    fn position_can_castle_is_correct() {
+        let pos = Position::default();
+        assert!(pos.can_castle(Castling::WHITE_OO));
+        assert!(pos.can_castle(Castling::WHITE_OOO));
+        assert!(pos.can_castle(Castling::BLACK_OO));
+        assert!(pos.can_castle(Castling::BLACK_OOO));
+
+        let pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+        assert_eq!(pos.can_castle(Castling::WHITE_OO), false);
+        assert_eq!(pos.can_castle(Castling::WHITE_OOO), false);
+        assert_eq!(pos.can_castle(Castling::BLACK_OO), false);
+        assert_eq!(pos.can_castle(Castling::BLACK_OOO), false);
+    }
+
+    #[test]
+    fn position_castling_impeded_is_correct() {
+        let pos = Position::default();
+        assert!(pos.castling_impeded(Castling::WHITE_OO));
+        assert!(pos.castling_impeded(Castling::WHITE_OOO));
+        assert!(pos.castling_impeded(Castling::BLACK_OO));
+        assert!(pos.castling_impeded(Castling::BLACK_OOO));
+
+        let pos = Position::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
+        assert_eq!(pos.castling_impeded(Castling::WHITE_OO), false);
+        assert_eq!(pos.castling_impeded(Castling::WHITE_OOO), false);
+        assert_eq!(pos.castling_impeded(Castling::BLACK_OO), false);
+        assert_eq!(pos.castling_impeded(Castling::BLACK_OOO), false);
     }
 }
