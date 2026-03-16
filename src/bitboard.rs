@@ -186,6 +186,7 @@ impl Default for Magic {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboards {
     evasion_masks: [[Bitboard; 64]; 64],
+    line_bbs: [[Bitboard; 64]; 64],
     knight_attacks: [Bitboard; 64],
     king_attacks: [Bitboard; 64],
     pawn_attacks: [[Bitboard; 64]; 2],
@@ -324,6 +325,7 @@ impl Bitboards {
     /// Initialise the various bitboard tables
     pub fn init() -> Self {
         let mut evasion_masks = [[Bitboard::new(0); 64]; 64];
+        let mut line_bbs = [[Bitboard::new(0); 64]; 64];
         let mut knight_attacks = [Bitboard::new(0); 64];
         let mut king_attacks = [Bitboard::new(0); 64];
         let mut pawn_attacks = [[Bitboard::new(0); 64]; 2];
@@ -332,6 +334,10 @@ impl Bitboards {
         let mut bishop_attacks = [Bitboard::new(0); 0x1480];
         let mut rook_masks = [Magic::default(); 64];
         let mut rook_attacks = [Bitboard::new(0); 0x19000];
+
+        // Generate PEXT bitboards for bishops and rooks
+        Self::init_pexts(Piece::Bishop, &mut bishop_attacks, &mut bishop_masks);
+        Self::init_pexts(Piece::Rook, &mut rook_attacks, &mut rook_masks);
 
         for s1 in Square::ALL {
             for s2 in Square::ALL {
@@ -344,6 +350,29 @@ impl Bitboards {
                 let same_diag = s1.rank().abs_diff(s2.rank()) == s1.file().abs_diff(s2.file());
 
                 if same_rank || same_file || same_diag {
+                    // This can be tidied up with a global magics...
+                    if same_rank || same_file {
+                        let magic_s1 = rook_masks[s1.idx()];
+                        let offset_s1 = magic_s1.offset;
+
+                        let magic_s2 = rook_masks[s2.idx()];
+                        let offset_s2 = magic_s2.offset;
+                        line_bbs[s1.idx()][s2.idx()] = (rook_attacks[offset_s1]
+                            & rook_attacks[offset_s2])
+                            | s1.bitboard()
+                            | s2.bitboard();
+                    } else {
+                        let magic_s1 = bishop_masks[s1.idx()];
+                        let offset_s1 = magic_s1.offset;
+
+                        let magic_s2 = bishop_masks[s2.idx()];
+                        let offset_s2 = magic_s2.offset;
+                        line_bbs[s1.idx()][s2.idx()] = (bishop_attacks[offset_s1]
+                            & bishop_attacks[offset_s2])
+                            | s1.bitboard()
+                            | s2.bitboard();
+                    }
+
                     Self::populate_path(s1, s2, &mut evasion_masks);
                 }
 
@@ -362,12 +391,9 @@ impl Bitboards {
             }
         }
 
-        // Generate PEXT bitboards for bishops and rooks
-        Self::init_pexts(Piece::Bishop, &mut bishop_attacks, &mut bishop_masks);
-        Self::init_pexts(Piece::Rook, &mut rook_attacks, &mut rook_masks);
-
         Self {
             evasion_masks,
+            line_bbs,
             knight_attacks,
             king_attacks,
             pawn_attacks,
@@ -376,6 +402,14 @@ impl Bitboards {
             rook_masks,
             rook_attacks,
         }
+    }
+
+    /// Returns a bitboard representing the entire line (from the two edges of the board)
+    /// which intersect the two squares. If the two squares are not on the same
+    /// file/rank/diagonal it returns 0
+    #[inline(always)]
+    pub fn line_bb(&self, s1: Square, s2: Square) -> Bitboard {
+        return self.line_bbs[s1.idx()][s2.idx()];
     }
 
     /// Returns a bitboard representing the squares semi-open segment between the two squares
@@ -579,6 +613,32 @@ mod test {
         // Non-inline squares return only the end square
         assert_eq!(bbs.evasion_masks[Square::B1.idx()][Square::C7.idx()].0, 0x0004_0000_0000_0000);
         assert_eq!(bbs.evasion_masks[Square::F7.idx()][Square::G2.idx()].0, 0x4000);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn init_line_bbs_correct() {
+        let bbs = Bitboards::init();
+        
+        for i in 0..64 {
+            assert_eq!(bbs.line_bbs[i][i].0, 0);
+        }
+    
+        // Init same rank correctly
+        assert_eq!(bbs.line_bbs[Square::A1.idx()][Square::H1.idx()].0, 0xFF);
+        assert_eq!(bbs.line_bbs[Square::H6.idx()][Square::B6.idx()].0, 0xFF00_0000_0000);
+
+        // Init same file correctly
+        assert_eq!(bbs.line_bbs[Square::B1.idx()][Square::B8.idx()].0, 0x0202_0202_0202_0202);
+        assert_eq!(bbs.line_bbs[Square::F7.idx()][Square::F2.idx()].0, 0x2020_2020_2020_2020);
+
+        // Init same diag correctly
+        assert_eq!(bbs.line_bbs[Square::B2.idx()][Square::G7.idx()].0, 0x8040_2010_0804_0201);
+        assert_eq!(bbs.line_bbs[Square::E7.idx()][Square::B4.idx()].0, 0x2010_0804_0201_0000);
+
+        // Non-inline squares return 0
+        assert_eq!(bbs.line_bbs[Square::B1.idx()][Square::C7.idx()].0, 0);
+        assert_eq!(bbs.line_bbs[Square::F7.idx()][Square::G2.idx()].0, 0);
     }
 
     #[test]
