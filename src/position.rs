@@ -1,6 +1,6 @@
 use crate::{
-    bitboard::Bitboard,
-    types::{Castling, Colour, Mailbox, Move, Piece, PieceCode, Square},
+    bitboard::{Bitboard, Bitboards},
+    types::{Castling, Colour, Direction, Mailbox, Move, Piece, PieceCode, Square},
     zobrist::{ZKey, ep_hashable},
 };
 
@@ -78,6 +78,8 @@ pub struct Position {
     pub pieces: [[Bitboard; 6]; 2],
     pub occupancy: [Bitboard; 3],
     pub mailbox: Mailbox,
+    pub pinned_pieces: [Bitboard; 2],
+    pub pinners: [Bitboard; 2],
     pub zkey: ZKey,
     pub fullmove_counter: u16,
     pub side_to_move: Colour,
@@ -97,6 +99,8 @@ impl Position {
             pieces: [[Bitboard::new(0); 6]; 2],
             occupancy: [Bitboard::new(0); 3],
             mailbox: Mailbox::new(),
+            pinned_pieces: [Bitboard::new(0); 2],
+            pinners: [Bitboard::new(0); 2],
             zkey: zkey,
             fullmove_counter: 0,
             side_to_move: Colour::White,
@@ -106,6 +110,25 @@ impl Position {
             castling_rights: Castling::NONE,
             halfmove_clock: 0,
         }
+    }
+
+    #[inline(always)]
+    pub fn king_square(&self, c: Colour) -> Square {
+        if c == Colour::White {
+            return self.white_king_square;
+        } else {
+            return self.black_king_square;
+        }
+    }
+
+    #[inline(always)]
+    pub fn bishop_sliders(&self, c: Colour) -> Bitboard {
+        self.pieces[c.idx()][Piece::Bishop.idx()] | self.pieces[c.idx()][Piece::Queen.idx()]
+    }
+
+    #[inline(always)]
+    pub fn rook_sliders(&self, c: Colour) -> Bitboard {
+        self.pieces[c.idx()][Piece::Rook.idx()] | self.pieces[c.idx()][Piece::Queen.idx()]
     }
 
     #[inline(always)]
@@ -140,7 +163,7 @@ impl Position {
     }
 
     #[inline(always)]
-    pub fn make_move(&mut self, mv: Move, state: &mut StateInfo) {
+    pub fn make_move(&mut self, mv: Move, state: &mut StateInfo, bbs: &Bitboards) {
         state.zkey = self.zkey;
         state.ep_square = self.ep_square;
         state.castling_rights = self.castling_rights;
@@ -218,10 +241,13 @@ impl Position {
 
         self.side_to_move = self.side_to_move.opposite();
         self.zkey.toggle_side();
+
+        self.update_pins(Colour::White, bbs);
+        self.update_pins(Colour::Black, bbs);
     }
 
     #[inline(always)]
-    pub fn undo_move(&mut self, mv: Move, prev: &StateInfo) {
+    pub fn undo_move(&mut self, mv: Move, prev: &StateInfo, bbs: &Bitboards) {
         self.side_to_move = self.side_to_move.opposite();
 
         self.halfmove_clock = prev.halfmove_clock;
@@ -268,6 +294,9 @@ impl Position {
 
         // Replace zkey at the end so we don't accidentally update it placing/removing pieces
         self.zkey = prev.zkey;
+
+        self.update_pins(Colour::White, bbs);
+        self.update_pins(Colour::Black, bbs);
     }
 
     #[inline(always)]
@@ -279,6 +308,103 @@ impl Position {
     pub fn castling_impeded(&self, c: Castling) -> bool {
         let path = CASTLING_PATHS[c.bits() as usize];
         self.occupancy[2] & path != Bitboard::new(0)
+    }
+
+    /// Calculate the pinned pieces for the specified side and the pinning piececs for the opponent
+    #[inline(always)]
+    pub fn update_pins(&mut self, c: Colour, bbs: &Bitboards) {
+        let king_sq = self.king_square(c);
+
+        self.pinned_pieces[c.idx()] = Bitboard::new(0);
+        self.pinners[c.opposite().idx()] = Bitboard::new(0);
+
+        // A sniper is a slider which attacks the king when a piece and other snipers are removed
+        let mut snipers = (bbs.bishop_attacks(king_sq, Bitboard::new(0))
+            & self.bishop_sliders(c.opposite()))
+            | (bbs.rook_attacks(king_sq, Bitboard::new(0)) & self.rook_sliders(c.opposite()));
+        let occ = self.occupancy[2] ^ snipers;
+
+        while !snipers.is_empty() {
+            let sniper_sq = snipers.pop_lsb();
+            // Occupied squares between the king and sniper
+            let b = bbs.evasion_mask(king_sq, sniper_sq) & occ;
+
+            if b.bit_count() == 1 {
+                self.pinned_pieces[c.idx()] |= b;
+                // The pinned piece is ours, so add sniper to pinners
+                if !(b & self.occupancy[c.idx()]).is_empty() {
+                    self.pinners[c.opposite().idx()] |= sniper_sq.bitboard();
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn pinned_pieces(&self, c: Colour) -> Bitboard {
+        self.pinned_pieces[c.idx()]
+    }
+
+    /// Check if a square is attacked by the opponent
+    #[inline(always)]
+    pub fn attackers_to_exist(&self, sq: Square, occ: Bitboard, bbs: &Bitboards) -> bool {
+        let us = self.side_to_move;
+        let them = us.opposite();
+
+        return !(bbs.bishop_attacks(sq, occ) & self.bishop_sliders(them)).is_empty()
+            || !(bbs.rook_attacks(sq, occ) & self.rook_sliders(them)).is_empty()
+            || !(bbs.knight_attacks(sq) & self.pieces[them.idx()][Piece::Knight.idx()]).is_empty()
+            || !(bbs.pawn_attacks(sq, us) & self.pieces[them.idx()][Piece::Pawn.idx()]).is_empty()
+            || !(bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()]).is_empty();
+    }
+
+    /// Check if a pseudo-legal move is legal or not \
+    /// Only checks if the king is in check after the move, not before
+    #[inline(always)]
+    pub fn is_legal(&self, mv: Move, bbs: &Bitboards) -> bool {
+        let us = self.side_to_move;
+        let them = us.opposite();
+        let from = mv.from();
+        let to = mv.to();
+
+        // En passant move should not leave the king in check
+        if mv.is_ep_capture() {
+            #[rustfmt::skip]
+            let ep_offset = if us == Colour::White { Direction::North } else { Direction::South };
+            let ep_pawn_sq = Square::new((to.u8() as i8 - ep_offset as i8) as u8);
+            let occ = (self.occupancy[2] ^ from.bitboard() ^ ep_pawn_sq.bitboard()) | to.bitboard();
+
+            return (bbs.bishop_attacks(self.king_square(us), occ) & self.bishop_sliders(them))
+                .is_empty()
+                && (bbs.rook_attacks(self.king_square(us), occ) & self.rook_sliders(them))
+                    .is_empty();
+        }
+
+        // Castling does not move through check or leave the king in check
+        if mv.is_castle() {
+            let step = if to.u8() > from.u8() {
+                Direction::West
+            } else {
+                Direction::East
+            };
+            let mut sq = to.u8() as i32;
+            let end = from.u8() as i32;
+
+            while sq != end {
+                if self.attackers_to_exist(Square::new(sq as u8), self.occupancy[2], bbs) {
+                    return false;
+                }
+                sq += step as i32;
+            }
+        }
+
+        // If the moving piece is a king, it should not leave the king in check
+        if mv.from() == self.king_square(us) {
+            return !self.attackers_to_exist(to, self.occupancy[2] ^ from.bitboard(), bbs);
+        }
+
+        // A non-king move is legal iff it is not pinned or it is moving along the pin
+        return (self.pinned_pieces(us) & from.bitboard()).is_empty()
+            || !(bbs.line_bb(from, to) & self.king_square(us).bitboard()).is_empty();
     }
 
     pub fn from_fen(fen: &str) -> Self {
@@ -354,6 +480,10 @@ impl Position {
             position.ep_square,
         );
 
+        let bbs = Bitboards::init();
+        position.update_pins(Colour::White, &bbs);
+        position.update_pins(Colour::Black, &bbs);
+
         return position;
     }
 
@@ -427,6 +557,8 @@ mod test {
         assert_eq!(actual.pieces, expected.pieces);
         assert_eq!(actual.occupancy, expected.occupancy);
         assert_eq!(actual.mailbox, expected.mailbox);
+        assert_eq!(actual.pinned_pieces, expected.pinned_pieces);
+        assert_eq!(actual.pinners, expected.pinners);
 
         assert_eq!(actual.white_king_square, expected.white_king_square);
         assert_eq!(actual.black_king_square, expected.black_king_square);
@@ -577,13 +709,15 @@ mod test {
 
     #[test]
     fn position_make_move_is_correct() {
+        let bbs = Bitboards::init();
+
         for case in MOVE_CASES {
             let mut pos = Position::from_fen(case.start_fen);
             let start = Position::from_fen(case.start_fen);
             let mut state = StateInfo::new();
             state.set_from_position(&pos);
 
-            pos.make_move(case.mv, &mut state);
+            pos.make_move(case.mv, &mut state, &bbs);
             let expected_pos = Position::from_fen(case.expected_fen);
 
             check_position_correctness(&pos, &expected_pos);
@@ -620,14 +754,16 @@ mod test {
 
     #[test]
     fn position_undo_move_is_correct() {
+        let bbs = Bitboards::init();
+
         for case in MOVE_CASES {
             let mut pos = Position::from_fen(case.start_fen);
             let start = Position::from_fen(case.start_fen);
             let mut state = StateInfo::new();
             state.set_from_position(&pos);
 
-            pos.make_move(case.mv, &mut state);
-            pos.undo_move(case.mv, &state);
+            pos.make_move(case.mv, &mut state, &bbs);
+            pos.undo_move(case.mv, &state, &bbs);
 
             check_position_correctness(&pos, &start);
         }
@@ -661,5 +797,51 @@ mod test {
         assert_eq!(pos.castling_impeded(Castling::WHITE_OOO), false);
         assert_eq!(pos.castling_impeded(Castling::BLACK_OO), false);
         assert_eq!(pos.castling_impeded(Castling::BLACK_OOO), false);
+    }
+
+    #[test]
+    fn position_update_pins_is_correct() {
+        let w = Colour::White;
+        let b = Colour::Black;
+        let bbs = Bitboards::init();
+        let mut pos = Position::default();
+
+        // No pinned/pinners in starting position
+        pos.update_pins(w, &bbs);
+        pos.update_pins(b, &bbs);
+
+        assert_eq!(pos.pinned_pieces[w.idx()], Bitboard::new(0));
+        assert_eq!(pos.pinned_pieces[b.idx()], Bitboard::new(0));
+        assert_eq!(pos.pinners[w.idx()], Bitboard::new(0));
+        assert_eq!(pos.pinners[b.idx()], Bitboard::new(0));
+
+        // Correctly updates the pinned/pinners
+        let mut pos = Position::from_fen("4k3/3np3/3q2P1/1B1r3B/Q2nR1b1/5P2/8/3KN2q w - - 0 1");
+        pos.update_pins(w, &bbs);
+        pos.update_pins(b, &bbs);
+
+        let mut w_pinned = Bitboard::new(0);
+        w_pinned.set_square(Square::E1);
+        w_pinned.set_square(Square::F3);
+        w_pinned.set_square(Square::D4);
+
+        let mut b_pinned = Bitboard::new(0);
+        b_pinned.set_square(Square::G6);
+        b_pinned.set_square(Square::D7);
+        b_pinned.set_square(Square::E7);
+
+        let mut w_pinners = Bitboard::new(0);
+        w_pinners.set_square(Square::H1);
+        w_pinners.set_square(Square::G4);
+
+        let mut b_pinners = Bitboard::new(0);
+        b_pinners.set_square(Square::E4);
+        b_pinners.set_square(Square::B5);
+        b_pinners.set_square(Square::A4);
+
+        assert_eq!(pos.pinned_pieces[w.idx()], w_pinned);
+        assert_eq!(pos.pinners[b.idx()], w_pinners);
+        assert_eq!(pos.pinned_pieces[b.idx()], b_pinned);
+        assert_eq!(pos.pinners[w.idx()], b_pinners);
     }
 }
