@@ -137,13 +137,39 @@ fn generate_king_step_moves(pos: &Position, moves: &mut MoveList, mode: GenType)
 
     let us = pos.side_to_move;
     let them = us.opposite();
+    let from = pos.king_square(us);
     let own_occ = pos.occupancy[us.idx()];
     let opp_occ = pos.occupancy[them.idx()];
-    let king_square = pos.king_square(us);
 
     // Mask of all quiet/capture move squares
-    let targets = bbs.king_attacks(king_square) & !own_occ;
-    push_moves(king_square, targets, opp_occ, moves, mode);
+    let mut targets = bbs.king_attacks(from) & !own_occ;
+
+    while !targets.is_empty() {
+        let to = targets.pop_lsb();
+
+        // Move leaves the king in check
+        let occ = (pos.occupancy[2] ^ from.bitboard()) | to.bitboard();
+        if pos.attackers_to_exist(to, occ) {
+            continue;
+        }
+
+        let is_capture = !(opp_occ & to.bitboard()).is_empty();
+        match mode {
+            GenType::Quiets if !is_capture => moves.push(Move::new(from, to, MoveFlag::Quiet)),
+            GenType::Noisy if is_capture => moves.push(Move::new(from, to, MoveFlag::Capture)),
+            GenType::All | GenType::Evasions => moves.push(Move::new(
+                from,
+                to,
+                if is_capture {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                },
+            )),
+            _ => {}
+        }
+    }
+    push_moves(from, targets, opp_occ, moves, mode);
 }
 
 fn generate_castling_moves(pos: &Position, moves: &mut MoveList) {
@@ -612,11 +638,7 @@ mod tests {
 
         // Gets correct king moves in other position
         let expected_white = [
-            Move::new(Square::D6, Square::C7, MoveFlag::Quiet),
-            Move::new(Square::D6, Square::D7, MoveFlag::Quiet),
-            Move::new(Square::D6, Square::E7, MoveFlag::Quiet),
             Move::new(Square::D6, Square::E6, MoveFlag::Capture),
-            Move::new(Square::D6, Square::D5, MoveFlag::Quiet),
             Move::new(Square::D6, Square::C5, MoveFlag::Quiet),
             Move::new(Square::D6, Square::C6, MoveFlag::Quiet),
         ];
