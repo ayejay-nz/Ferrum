@@ -510,6 +510,37 @@ pub fn generate(mode: GenType, pos: &Position, moves: &mut MoveList) {
     }
 }
 
+fn filter_moves(pos: &Position, moves: &mut MoveList, legal_moves: &mut MoveList) {
+    let us = pos.side_to_move;
+    let pinned = pos.pinned_pieces(us) & pos.occupancy[us.idx()];
+
+    for &mv in moves.as_slice() {
+        // Only need to check if a move is legal if it moves
+        // a pinned piece, is a castling move, or is en passant
+        if !(pinned & mv.from().bitboard()).is_empty() || mv.is_castle() || mv.is_ep_capture() {
+            if pos.is_legal(mv) {
+                legal_moves.push(mv);
+            }
+        } else {
+            legal_moves.push(mv);
+        }
+    }
+}
+
+pub fn generate_legal(pos: &Position, moves: &mut MoveList) -> MoveList {
+    let mut legal_moves = MoveList::new();
+
+    if pos.checkers.is_empty() {
+        generate(GenType::All, pos, moves);
+    } else {
+        generate(GenType::Evasions, pos, moves);
+    }
+
+    filter_moves(pos, moves, &mut legal_moves);
+
+    legal_moves
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

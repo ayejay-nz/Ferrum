@@ -1,5 +1,5 @@
 use rust_engine::{
-    movegen::{GenType, MoveList, generate},
+    movegen::{MoveList, generate_legal},
     position::{Position, StateInfo},
 };
 
@@ -8,22 +8,12 @@ fn perft(pos: &mut Position, depth: usize) -> u64 {
         return 1;
     }
 
-    let mut moves = MoveList::new();
-
-    if pos.checkers.is_empty() {
-        generate(GenType::All, pos, &mut moves);
-    } else {
-        generate(GenType::Evasions, pos, &mut moves);
-    }
+    let moves = generate_legal(pos, &mut MoveList::new());
 
     let mut nodes = 0;
     let mut state = StateInfo::new();
 
     for &mv in moves.as_slice() {
-        if !pos.is_legal(mv) {
-            continue;
-        }
-
         pos.make_move(mv, &mut state);
         nodes += perft(pos, depth - 1);
         pos.undo_move(mv, &state);
