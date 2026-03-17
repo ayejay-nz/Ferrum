@@ -1,6 +1,7 @@
-use rust_engine::position;
+use rust_engine::{position, search};
 
 fn main() {
-    let pos = position::Position::default();
-    pos.display();
+    let mut pos = position::Position::default();
+
+    search::search(&mut pos, 6);
 }
