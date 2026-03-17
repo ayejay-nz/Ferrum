@@ -181,7 +181,13 @@ fn generate_king_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mo
     }
 }
 
-fn generate_knight_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_knight_moves(
+    pos: &Position,
+    bbs: &Bitboards,
+    moves: &mut MoveList,
+    mode: GenType,
+    evasion_mask: Option<Bitboard>,
+) {
     let us = pos.side_to_move;
     let them = us.opposite();
     let own_occ = pos.occupancy[us.idx()];
@@ -194,15 +200,14 @@ fn generate_knight_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, 
 
         // Mask of all quiet/capture moves
         let mut targets = bbs.knight_attacks(from) & !own_occ;
-        if mode == GenType::Evasions {
-            let evasion_mask = get_evasion_mask(pos, bbs);
-            targets &= evasion_mask;
+        if let Some(mask) = evasion_mask {
+            targets &= mask;
         }
         push_moves(from, targets, opp_occ, moves, mode);
     }
 }
 
-fn generate_pawn_pushes(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_pawn_pushes(pos: &Position, moves: &mut MoveList, evasion_mask: Option<Bitboard>) {
     let us = pos.side_to_move;
     let is_white = us == Colour::White;
     let all_occ = pos.occupancy[2];
@@ -221,17 +226,16 @@ fn generate_pawn_pushes(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, m
     let mut bb1 = pawns_not_on_7.shift(up) & empty_squares;
     let mut bb2 = (bb1 & relative_rank_3).shift(up) & empty_squares;
 
-    if mode == GenType::Evasions {
-        let evasion_mask = get_evasion_mask(pos, bbs);
-        bb1 &= evasion_mask;
-        bb2 &= evasion_mask;
+    if let Some(mask) = evasion_mask {
+        bb1 &= mask;
+        bb2 &= mask;
     }
 
     push_pawn_moves(up as i8, &mut bb1, MoveFlag::Quiet, moves);
     push_pawn_moves(up as i8 + up as i8, &mut bb2, MoveFlag::DoublePush, moves);
 }
 
-fn generate_pawn_captures(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_pawn_captures(pos: &Position, moves: &mut MoveList, evasion_mask: Option<Bitboard>) {
     let us = pos.side_to_move;
     let them = us.opposite();
     let is_white = us == Colour::White;
@@ -250,17 +254,16 @@ fn generate_pawn_captures(pos: &Position, bbs: &Bitboards, moves: &mut MoveList,
     let mut bb1 = pawns_not_on_7.shift(up_left) & opp_occ;
     let mut bb2 = pawns_not_on_7.shift(up_right) & opp_occ;
 
-    if mode == GenType::Evasions {
-        let evasion_mask = get_evasion_mask(pos, bbs);
-        bb1 &= evasion_mask;
-        bb2 &= evasion_mask;
+    if let Some(mask) = evasion_mask {
+        bb1 &= mask;
+        bb2 &= mask;
     }
 
     push_pawn_moves(up_left as i8, &mut bb1, MoveFlag::Capture, moves);
     push_pawn_moves(up_right as i8, &mut bb2, MoveFlag::Capture, moves);
 }
 
-fn generate_pawn_promotions(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_pawn_promotions(pos: &Position, moves: &mut MoveList, evasion_mask: Option<Bitboard>) {
     let us = pos.side_to_move;
     let them = us.opposite();
     let is_white = us == Colour::White;
@@ -285,11 +288,10 @@ fn generate_pawn_promotions(pos: &Position, bbs: &Bitboards, moves: &mut MoveLis
         let mut bb2 = pawns_on_7.shift(up_left) & opp_occ;
         let mut bb3 = pawns_on_7.shift(up_right) & opp_occ;
 
-        if mode == GenType::Evasions {
-            let evasion_mask = get_evasion_mask(pos, bbs);
-            bb1 &= evasion_mask;
-            bb2 &= evasion_mask;
-            bb3 &= evasion_mask;
+        if let Some(mask) = evasion_mask {
+            bb1 &= mask;
+            bb2 &= mask;
+            bb3 &= mask;
         }
 
         while !bb1.is_empty() {
@@ -324,26 +326,32 @@ fn generate_en_passant(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     }
 }
 
-fn generate_pawn_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_pawn_moves(
+    pos: &Position,
+    bbs: &Bitboards,
+    moves: &mut MoveList,
+    mode: GenType,
+    evasion_mask: Option<Bitboard>,
+) {
     match mode {
         GenType::All => {
-            generate_pawn_pushes(pos, bbs, moves, GenType::All);
-            generate_pawn_captures(pos, bbs, moves, GenType::All);
-            generate_pawn_promotions(pos, bbs, moves, GenType::All);
+            generate_pawn_pushes(pos, moves, evasion_mask);
+            generate_pawn_captures(pos, moves, evasion_mask);
+            generate_pawn_promotions(pos, moves, evasion_mask);
             generate_en_passant(pos, bbs, moves);
         }
         GenType::Noisy => {
-            generate_pawn_captures(pos, bbs, moves, GenType::Noisy);
+            generate_pawn_captures(pos, moves, evasion_mask);
             generate_en_passant(pos, bbs, moves);
-            generate_pawn_promotions(pos, bbs, moves, GenType::Noisy);
+            generate_pawn_promotions(pos, moves, evasion_mask);
         }
         GenType::Quiets => {
-            generate_pawn_pushes(pos, bbs, moves, GenType::Quiets);
+            generate_pawn_pushes(pos, moves, evasion_mask);
         }
         GenType::Evasions => {
-            generate_pawn_captures(pos, bbs, moves, GenType::Evasions);
-            generate_pawn_pushes(pos, bbs, moves, GenType::Evasions);
-            generate_pawn_promotions(pos, bbs, moves, GenType::Evasions);
+            generate_pawn_captures(pos, moves, evasion_mask);
+            generate_pawn_pushes(pos, moves, evasion_mask);
+            generate_pawn_promotions(pos, moves, evasion_mask);
 
             // En passant is an annoying case. Since it is so rare,
             // we just generate it and test it later for legality
@@ -357,6 +365,7 @@ fn generate_bishop_slider_moves(
     bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
+    evasion_mask: Option<Bitboard>,
 ) {
     let colour = pos.side_to_move;
     let us = colour.idx();
@@ -373,9 +382,8 @@ fn generate_bishop_slider_moves(
 
         // Mask of all quiet/capture moves
         let mut targets = bbs.bishop_attacks(from, all_occ) & !own_occ;
-        if mode == GenType::Evasions {
-            let evasion_mask = get_evasion_mask(pos, bbs);
-            targets &= evasion_mask;
+        if let Some(mask) = evasion_mask {
+            targets &= mask;
         }
         push_moves(from, targets, opp_occ, moves, mode);
     }
@@ -386,6 +394,7 @@ fn generate_rook_slider_moves(
     bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
+    evasion_mask: Option<Bitboard>,
 ) {
     let colour = pos.side_to_move;
     let us = colour.idx();
@@ -401,9 +410,8 @@ fn generate_rook_slider_moves(
 
         // Mask of all quiet/capture moves
         let mut targets = bbs.rook_attacks(from, all_occ) & !own_occ;
-        if mode == GenType::Evasions {
-            let evasion_mask = get_evasion_mask(pos, bbs);
-            targets &= evasion_mask;
+        if let Some(mask) = evasion_mask {
+            targets &= mask;
         }
         push_moves(from, targets, opp_occ, moves, mode);
     }
@@ -413,10 +421,10 @@ pub fn generate_all(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::All);
-    generate_knight_moves(pos, bbs, moves, GenType::All);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::All);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::All);
+    generate_pawn_moves(pos, bbs, moves, GenType::All, None);
+    generate_knight_moves(pos, bbs, moves, GenType::All, None);
+    generate_bishop_slider_moves(pos, bbs, moves, GenType::All, None);
+    generate_rook_slider_moves(pos, bbs, moves, GenType::All, None);
     generate_king_moves(pos, bbs, moves, GenType::All);
 }
 
@@ -424,10 +432,10 @@ pub fn generate_noisy(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::Noisy);
-    generate_knight_moves(pos, bbs, moves, GenType::Noisy);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::Noisy);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::Noisy);
+    generate_pawn_moves(pos, bbs, moves, GenType::Noisy, None);
+    generate_knight_moves(pos, bbs, moves, GenType::Noisy, None);
+    generate_bishop_slider_moves(pos, bbs, moves, GenType::Noisy, None);
+    generate_rook_slider_moves(pos, bbs, moves, GenType::Noisy, None);
     generate_king_moves(pos, bbs, moves, GenType::Noisy);
 }
 
@@ -435,10 +443,10 @@ pub fn generate_quiets(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::Quiets);
-    generate_knight_moves(pos, bbs, moves, GenType::Quiets);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::Quiets);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::Quiets);
+    generate_pawn_moves(pos, bbs, moves, GenType::Quiets, None);
+    generate_knight_moves(pos, bbs, moves, GenType::Quiets, None);
+    generate_bishop_slider_moves(pos, bbs, moves, GenType::Quiets, None);
+    generate_rook_slider_moves(pos, bbs, moves, GenType::Quiets, None);
     generate_king_moves(pos, bbs, moves, GenType::Quiets)
 }
 
@@ -450,10 +458,11 @@ pub fn generate_evasions(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) 
 
     // Skip non-king move generation if double check
     if checkers.bit_count() == 1 {
-        generate_pawn_moves(pos, bbs, moves, GenType::Evasions);
-        generate_knight_moves(pos, bbs, moves, GenType::Evasions);
-        generate_bishop_slider_moves(pos, bbs, moves, GenType::Evasions);
-        generate_rook_slider_moves(pos, bbs, moves, GenType::Evasions);
+        let evasion_mask = Some(get_evasion_mask(pos, bbs));
+        generate_pawn_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
+        generate_knight_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
+        generate_bishop_slider_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
+        generate_rook_slider_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
     }
 
     generate_king_moves(pos, bbs, moves, GenType::Evasions);
@@ -490,21 +499,37 @@ mod tests {
         piece: Piece,
         moves: &mut MoveList,
     ) {
-        let generate_moves = match piece {
-            Piece::Pawn => generate_pawn_moves,
-            Piece::Knight => generate_knight_moves,
-            Piece::Bishop => generate_bishop_slider_moves,
-            Piece::Rook => generate_rook_slider_moves,
-            Piece::King => generate_king_moves,
-            _ => unreachable!(),
+        if piece == Piece::King {
+            generate_king_moves(pos, bbs, moves, GenType::All);
+        } else {
+            let generate_moves = match piece {
+                Piece::Pawn => generate_pawn_moves,
+                Piece::Knight => generate_knight_moves,
+                Piece::Bishop => generate_bishop_slider_moves,
+                Piece::Rook => generate_rook_slider_moves,
+                _ => unreachable!(),
+            };
+            generate_moves(pos, bbs, moves, GenType::All, None);
         };
 
-        generate_moves(pos, bbs, moves, GenType::All);
         assert_same_moves(moves, expected_white);
 
         moves.clear();
         pos.side_to_move = pos.side_to_move.opposite();
-        generate_moves(pos, bbs, moves, GenType::All);
+
+        if piece == Piece::King {
+            generate_king_moves(pos, bbs, moves, GenType::All);
+        } else {
+            let generate_moves = match piece {
+                Piece::Pawn => generate_pawn_moves,
+                Piece::Knight => generate_knight_moves,
+                Piece::Bishop => generate_bishop_slider_moves,
+                Piece::Rook => generate_rook_slider_moves,
+                _ => unreachable!(),
+            };
+            generate_moves(pos, bbs, moves, GenType::All, None);
+        };
+
         assert_same_moves(moves, expected_black);
 
         moves.clear();
@@ -753,7 +778,7 @@ mod tests {
             Move::new(Square::E5, Square::D6, MoveFlag::EpCapture),
         ];
         let pos = Position::from_fen("3k4/8/8/2PpP3/8/8/8/3K4 w - d6 0 1");
-        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All);
+        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All, None);
         assert_same_moves(&moves, &expected_white);
         moves.clear();
 
@@ -764,7 +789,7 @@ mod tests {
             Move::new(Square::E4, Square::D3, MoveFlag::EpCapture),
         ];
         let pos = Position::from_fen("3k4/8/8/8/2pPp3/8/8/3K4 b - d3 0 1");
-        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All);
+        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All, None);
         assert_same_moves(&moves, &expected_black);
         moves.clear();
 
