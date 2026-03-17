@@ -1,6 +1,7 @@
 use std::{
     arch::x86_64::_pext_u64,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, Shr, Sub},
+    sync::OnceLock,
 };
 
 use crate::types::{self, Colour, Direction, Piece, Square};
@@ -196,6 +197,12 @@ pub struct Bitboards {
     bishop_attacks: [Bitboard; 0x1480],
     rook_masks: [Magic; 64],
     rook_attacks: [Bitboard; 0x19000],
+}
+
+static BITBOARDS: OnceLock<Bitboards> = OnceLock::new();
+
+pub fn bitboards() -> &'static Bitboards {
+    BITBOARDS.get_or_init(Bitboards::init)
 }
 
 impl Bitboards {
@@ -594,7 +601,7 @@ mod test {
     #[rustfmt::skip]
     #[test]
     fn init_evasion_masks_correctly() {
-        let bbs = Bitboards::init();
+        let bbs = bitboards();
         
         for i in 0..64 {
             assert_eq!(bbs.evasion_masks[i][i].0, 0);
@@ -620,7 +627,7 @@ mod test {
     #[rustfmt::skip]
     #[test]
     fn init_line_bbs_correct() {
-        let bbs = Bitboards::init();
+        let bbs = bitboards();
         
         for i in 0..64 {
             assert_eq!(bbs.line_bbs[i][i].0, 0);
@@ -645,7 +652,7 @@ mod test {
 
     #[test]
     fn init_king_attacks_correctly() {
-        let bbs = Bitboards::init();
+        let bbs = bitboards();
 
         // Check that center squares are correct
         let expected_e5 = Square::D6.bitboard()
@@ -667,7 +674,7 @@ mod test {
 
     #[test]
     fn init_knight_attacks_correctly() {
-        let bbs = Bitboards::init();
+        let bbs = bitboards();
 
         // Check that center squares are correct
         let expected_d5 = Square::C7.bitboard()
@@ -689,7 +696,7 @@ mod test {
 
     #[test]
     fn init_pawn_attacks_correctly() {
-        let bbs = Bitboards::init();
+        let bbs = bitboards();
 
         // Ensure white and black attacks are not equal
         assert_ne!(

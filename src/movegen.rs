@@ -1,5 +1,5 @@
 use crate::{
-    bitboard::{Bitboard, Bitboards},
+    bitboard::{Bitboard, bitboards},
     position::Position,
     types::{Castling, CastlingType, Colour, Direction, Move, MoveFlag, Piece, Square},
 };
@@ -57,7 +57,8 @@ impl MoveList {
     }
 }
 
-fn get_evasion_mask(pos: &Position, bbs: &Bitboards) -> Bitboard {
+fn get_evasion_mask(pos: &Position) -> Bitboard {
+    let bbs = bitboards();
     let us = pos.side_to_move;
     let king_sq = pos.king_square(us);
 
@@ -131,7 +132,9 @@ fn push_castling(king_square: Square, ct: CastlingType, moves: &mut MoveList) {
     moves.push(mv);
 }
 
-fn generate_king_step_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_king_step_moves(pos: &Position, moves: &mut MoveList, mode: GenType) {
+    let bbs = bitboards();
+
     let us = pos.side_to_move;
     let them = us.opposite();
     let own_occ = pos.occupancy[us.idx()];
@@ -162,32 +165,33 @@ fn generate_castling_moves(pos: &Position, moves: &mut MoveList) {
     }
 }
 
-fn generate_king_moves(pos: &Position, bbs: &Bitboards, moves: &mut MoveList, mode: GenType) {
+fn generate_king_moves(pos: &Position, moves: &mut MoveList, mode: GenType) {
     match mode {
         GenType::All => {
-            generate_king_step_moves(pos, bbs, moves, GenType::All);
+            generate_king_step_moves(pos, moves, GenType::All);
             generate_castling_moves(pos, moves);
         }
         GenType::Noisy => {
-            generate_king_step_moves(pos, bbs, moves, GenType::Noisy);
+            generate_king_step_moves(pos, moves, GenType::Noisy);
         }
         GenType::Quiets => {
-            generate_king_step_moves(pos, bbs, moves, GenType::Quiets);
+            generate_king_step_moves(pos, moves, GenType::Quiets);
             generate_castling_moves(pos, moves);
         }
         GenType::Evasions => {
-            generate_king_step_moves(pos, bbs, moves, GenType::All);
+            generate_king_step_moves(pos, moves, GenType::All);
         }
     }
 }
 
 fn generate_knight_moves(
     pos: &Position,
-    bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
     evasion_mask: Option<Bitboard>,
 ) {
+    let bbs = bitboards();
+
     let us = pos.side_to_move;
     let them = us.opposite();
     let own_occ = pos.occupancy[us.idx()];
@@ -306,7 +310,9 @@ fn generate_pawn_promotions(pos: &Position, moves: &mut MoveList, evasion_mask: 
     }
 }
 
-fn generate_en_passant(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+fn generate_en_passant(pos: &Position, moves: &mut MoveList) {
+    let bbs = bitboards();
+
     let us = pos.side_to_move;
     let them = us.opposite();
     let is_white = us == Colour::White;
@@ -328,7 +334,6 @@ fn generate_en_passant(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
 
 fn generate_pawn_moves(
     pos: &Position,
-    bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
     evasion_mask: Option<Bitboard>,
@@ -338,11 +343,11 @@ fn generate_pawn_moves(
             generate_pawn_pushes(pos, moves, evasion_mask);
             generate_pawn_captures(pos, moves, evasion_mask);
             generate_pawn_promotions(pos, moves, evasion_mask);
-            generate_en_passant(pos, bbs, moves);
+            generate_en_passant(pos, moves);
         }
         GenType::Noisy => {
             generate_pawn_captures(pos, moves, evasion_mask);
-            generate_en_passant(pos, bbs, moves);
+            generate_en_passant(pos, moves);
             generate_pawn_promotions(pos, moves, evasion_mask);
         }
         GenType::Quiets => {
@@ -355,18 +360,19 @@ fn generate_pawn_moves(
 
             // En passant is an annoying case. Since it is so rare,
             // we just generate it and test it later for legality
-            generate_en_passant(pos, bbs, moves);
+            generate_en_passant(pos, moves);
         }
     }
 }
 
 fn generate_bishop_slider_moves(
     pos: &Position,
-    bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
     evasion_mask: Option<Bitboard>,
 ) {
+    let bbs = bitboards();
+
     let colour = pos.side_to_move;
     let us = colour.idx();
     let them = colour.opposite().idx();
@@ -391,11 +397,12 @@ fn generate_bishop_slider_moves(
 
 fn generate_rook_slider_moves(
     pos: &Position,
-    bbs: &Bitboards,
     moves: &mut MoveList,
     mode: GenType,
     evasion_mask: Option<Bitboard>,
 ) {
+    let bbs = bitboards();
+
     let colour = pos.side_to_move;
     let us = colour.idx();
     let them = colour.opposite().idx();
@@ -417,40 +424,40 @@ fn generate_rook_slider_moves(
     }
 }
 
-pub fn generate_all(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+pub fn generate_all(pos: &Position, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::All, None);
-    generate_knight_moves(pos, bbs, moves, GenType::All, None);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::All, None);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::All, None);
-    generate_king_moves(pos, bbs, moves, GenType::All);
+    generate_pawn_moves(pos, moves, GenType::All, None);
+    generate_knight_moves(pos, moves, GenType::All, None);
+    generate_bishop_slider_moves(pos, moves, GenType::All, None);
+    generate_rook_slider_moves(pos, moves, GenType::All, None);
+    generate_king_moves(pos, moves, GenType::All);
 }
 
-pub fn generate_noisy(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+pub fn generate_noisy(pos: &Position, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::Noisy, None);
-    generate_knight_moves(pos, bbs, moves, GenType::Noisy, None);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::Noisy, None);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::Noisy, None);
-    generate_king_moves(pos, bbs, moves, GenType::Noisy);
+    generate_pawn_moves(pos, moves, GenType::Noisy, None);
+    generate_knight_moves(pos, moves, GenType::Noisy, None);
+    generate_bishop_slider_moves(pos, moves, GenType::Noisy, None);
+    generate_rook_slider_moves(pos, moves, GenType::Noisy, None);
+    generate_king_moves(pos, moves, GenType::Noisy);
 }
 
-pub fn generate_quiets(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+pub fn generate_quiets(pos: &Position, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();
 
-    generate_pawn_moves(pos, bbs, moves, GenType::Quiets, None);
-    generate_knight_moves(pos, bbs, moves, GenType::Quiets, None);
-    generate_bishop_slider_moves(pos, bbs, moves, GenType::Quiets, None);
-    generate_rook_slider_moves(pos, bbs, moves, GenType::Quiets, None);
-    generate_king_moves(pos, bbs, moves, GenType::Quiets)
+    generate_pawn_moves(pos, moves, GenType::Quiets, None);
+    generate_knight_moves(pos, moves, GenType::Quiets, None);
+    generate_bishop_slider_moves(pos, moves, GenType::Quiets, None);
+    generate_rook_slider_moves(pos, moves, GenType::Quiets, None);
+    generate_king_moves(pos, moves, GenType::Quiets)
 }
 
-pub fn generate_evasions(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+pub fn generate_evasions(pos: &Position, moves: &mut MoveList) {
     moves.clear();
 
     let checkers = pos.checkers;
@@ -458,22 +465,22 @@ pub fn generate_evasions(pos: &Position, bbs: &Bitboards, moves: &mut MoveList) 
 
     // Skip non-king move generation if double check
     if checkers.bit_count() == 1 {
-        let evasion_mask = Some(get_evasion_mask(pos, bbs));
-        generate_pawn_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
-        generate_knight_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
-        generate_bishop_slider_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
-        generate_rook_slider_moves(pos, bbs, moves, GenType::Evasions, evasion_mask);
+        let evasion_mask = Some(get_evasion_mask(pos));
+        generate_pawn_moves(pos, moves, GenType::Evasions, evasion_mask);
+        generate_knight_moves(pos, moves, GenType::Evasions, evasion_mask);
+        generate_bishop_slider_moves(pos, moves, GenType::Evasions, evasion_mask);
+        generate_rook_slider_moves(pos, moves, GenType::Evasions, evasion_mask);
     }
 
-    generate_king_moves(pos, bbs, moves, GenType::Evasions);
+    generate_king_moves(pos, moves, GenType::Evasions);
 }
 
-pub fn generate(mode: GenType, pos: &Position, bbs: &Bitboards, moves: &mut MoveList) {
+pub fn generate(mode: GenType, pos: &Position, moves: &mut MoveList) {
     match mode {
-        GenType::All => generate_all(pos, bbs, moves),
-        GenType::Noisy => generate_noisy(pos, bbs, moves),
-        GenType::Quiets => generate_quiets(pos, bbs, moves),
-        GenType::Evasions => generate_evasions(pos, bbs, moves),
+        GenType::All => generate_all(pos, moves),
+        GenType::Noisy => generate_noisy(pos, moves),
+        GenType::Quiets => generate_quiets(pos, moves),
+        GenType::Evasions => generate_evasions(pos, moves),
     }
 }
 
@@ -493,14 +500,13 @@ mod tests {
 
     fn assert_both_sides(
         pos: &mut Position,
-        bbs: &Bitboards,
         expected_white: &[Move],
         expected_black: &[Move],
         piece: Piece,
         moves: &mut MoveList,
     ) {
         if piece == Piece::King {
-            generate_king_moves(pos, bbs, moves, GenType::All);
+            generate_king_moves(pos, moves, GenType::All);
         } else {
             let generate_moves = match piece {
                 Piece::Pawn => generate_pawn_moves,
@@ -509,7 +515,7 @@ mod tests {
                 Piece::Rook => generate_rook_slider_moves,
                 _ => unreachable!(),
             };
-            generate_moves(pos, bbs, moves, GenType::All, None);
+            generate_moves(pos, moves, GenType::All, None);
         };
 
         assert_same_moves(moves, expected_white);
@@ -518,7 +524,7 @@ mod tests {
         pos.side_to_move = pos.side_to_move.opposite();
 
         if piece == Piece::King {
-            generate_king_moves(pos, bbs, moves, GenType::All);
+            generate_king_moves(pos, moves, GenType::All);
         } else {
             let generate_moves = match piece {
                 Piece::Pawn => generate_pawn_moves,
@@ -527,7 +533,7 @@ mod tests {
                 Piece::Rook => generate_rook_slider_moves,
                 _ => unreachable!(),
             };
-            generate_moves(pos, bbs, moves, GenType::All, None);
+            generate_moves(pos, moves, GenType::All, None);
         };
 
         assert_same_moves(moves, expected_black);
@@ -538,7 +544,6 @@ mod tests {
     #[test]
     fn generates_correct_knight_moves() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // Generates the correct moves in the starting position as white and black
@@ -556,7 +561,6 @@ mod tests {
         ];
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Knight,
@@ -591,7 +595,6 @@ mod tests {
         ];
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Knight,
@@ -602,11 +605,10 @@ mod tests {
     #[test]
     fn generates_correct_king_moves() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // Default position should yield no king moves
-        assert_both_sides(&mut pos, &bbs, &[], &[], Piece::King, &mut moves);
+        assert_both_sides(&mut pos, &[], &[], Piece::King, &mut moves);
 
         // Gets correct king moves in other position
         let expected_white = [
@@ -626,7 +628,6 @@ mod tests {
         let mut pos = Position::from_fen("k7/1N3rp1/3Kp2p/4P2P/8/6B1/8/8 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::King,
@@ -649,7 +650,6 @@ mod tests {
         let mut pos = Position::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::King,
@@ -668,7 +668,6 @@ mod tests {
         let mut pos = Position::from_fen("r3kb1r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Qkq - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::King,
@@ -679,7 +678,6 @@ mod tests {
     #[test]
     fn generates_correct_pawn_moves() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // Generates correct pawn moves in starting position
@@ -721,7 +719,6 @@ mod tests {
         ];
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Pawn,
@@ -742,7 +739,6 @@ mod tests {
         let mut pos = Position::from_fen("4k3/7p/p7/8/8/7P/P7/4K3 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Pawn,
@@ -763,7 +759,6 @@ mod tests {
         let mut pos = Position::from_fen("4k3/8/8/rN1p4/P1P1p1np/n3P1BP/8/4K3 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Pawn,
@@ -778,7 +773,7 @@ mod tests {
             Move::new(Square::E5, Square::D6, MoveFlag::EpCapture),
         ];
         let pos = Position::from_fen("3k4/8/8/2PpP3/8/8/8/3K4 w - d6 0 1");
-        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All, None);
+        generate_pawn_moves(&pos, &mut moves, GenType::All, None);
         assert_same_moves(&moves, &expected_white);
         moves.clear();
 
@@ -789,7 +784,7 @@ mod tests {
             Move::new(Square::E4, Square::D3, MoveFlag::EpCapture),
         ];
         let pos = Position::from_fen("3k4/8/8/8/2pPp3/8/8/3K4 b - d3 0 1");
-        generate_pawn_moves(&pos, &bbs, &mut moves, GenType::All, None);
+        generate_pawn_moves(&pos, &mut moves, GenType::All, None);
         assert_same_moves(&moves, &expected_black);
         moves.clear();
 
@@ -809,7 +804,6 @@ mod tests {
         let mut pos = Position::from_fen("3k4/6P1/8/8/8/8/p7/3K4 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Pawn,
@@ -832,7 +826,6 @@ mod tests {
         let mut pos = Position::from_fen("3k2nr/7P/8/8/8/8/6p1/3K1BN1 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Pawn,
@@ -843,7 +836,6 @@ mod tests {
     #[test]
     fn generates_correct_bishop_sliders() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // No moves in the default position
@@ -851,7 +843,6 @@ mod tests {
         let expected_black = [];
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Bishop,
@@ -879,7 +870,6 @@ mod tests {
         let mut pos = Position::from_fen("2rqk3/2N5/5p2/3p1n2/N2Pp1b1/6n1/2B5/3QK3 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Bishop,
@@ -890,7 +880,6 @@ mod tests {
     #[test]
     fn generates_correct_rook_sliders() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // No moves in the default position
@@ -898,7 +887,6 @@ mod tests {
         let expected_black = [];
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Rook,
@@ -932,7 +920,6 @@ mod tests {
         let mut pos = Position::from_fen("4k3/8/8/1n1p4/pr1q1N2/8/2bQ2B1/BR2K3 w - - 0 1");
         assert_both_sides(
             &mut pos,
-            &bbs,
             &expected_white,
             &expected_black,
             Piece::Rook,
@@ -943,7 +930,6 @@ mod tests {
     #[test]
     fn generates_correct_pseudo_legal() {
         let mut pos = Position::default();
-        let bbs = Bitboards::init();
         let mut moves = MoveList::new();
 
         // Generates correct moves in starting position
@@ -992,12 +978,12 @@ mod tests {
             Move::new(Square::G8, Square::H6, MoveFlag::Quiet),
         ];
 
-        generate_all(&pos, &bbs, &mut moves);
+        generate_all(&pos, &mut moves);
         assert_same_moves(&moves, &expected_white);
 
         moves.clear();
         pos.side_to_move = pos.side_to_move.opposite();
-        generate_all(&pos, &bbs, &mut moves);
+        generate_all(&pos, &mut moves);
         assert_same_moves(&moves, &expected_black);
 
         moves.clear();

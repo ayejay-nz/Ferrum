@@ -527,10 +527,7 @@ impl Move {
 mod tests {
     use super::*;
 
-    use crate::{
-        bitboard::Bitboards,
-        position::{Position, StateInfo},
-    };
+    use crate::position::{Position, StateInfo};
 
     const PAWN_E4: Move = Move::new(Square::E2, Square::E4, MoveFlag::DoublePush);
 
@@ -630,20 +627,19 @@ mod tests {
     // --- Castling ---
     #[test]
     fn castling_update_is_correct() {
-        let bbs = Bitboards::init();
         let (mut pos, mut state) = set_board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
 
         // Moving king clears castling rights
         let king_move = Move::new(Square::E1, Square::F1, MoveFlag::Quiet);
-        pos.make_move(king_move, &mut state, &bbs);
+        pos.make_move(king_move, &mut state);
         assert_eq!(pos.castling_rights, Castling::BLACK_CASTLING);
-        pos.undo_move(king_move, &state, &bbs);
+        pos.undo_move(king_move, &state);
 
         // Moving rook clears castling rights and rook capture clears opposition rights
         let rook_move = Move::new(Square::H1, Square::H8, MoveFlag::Capture);
-        pos.make_move(rook_move, &mut state, &bbs);
+        pos.make_move(rook_move, &mut state);
         assert_eq!(pos.castling_rights, Castling::QUEENSIDE);
-        pos.undo_move(rook_move, &state, &bbs);
+        pos.undo_move(rook_move, &state);
     }
 
     #[test]

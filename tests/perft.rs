@@ -1,10 +1,9 @@
 use rust_engine::{
-    bitboard::Bitboards,
     movegen::{GenType, MoveList, generate},
     position::{Position, StateInfo},
 };
 
-fn perft(pos: &mut Position, bbs: &Bitboards, depth: usize) -> u64 {
+fn perft(pos: &mut Position, depth: usize) -> u64 {
     if depth == 0 {
         return 1;
     }
@@ -12,22 +11,22 @@ fn perft(pos: &mut Position, bbs: &Bitboards, depth: usize) -> u64 {
     let mut moves = MoveList::new();
 
     if pos.checkers.is_empty() {
-        generate(GenType::All, pos, bbs, &mut moves);
+        generate(GenType::All, pos, &mut moves);
     } else {
-        generate(GenType::Evasions, pos, bbs, &mut moves);
+        generate(GenType::Evasions, pos, &mut moves);
     }
 
     let mut nodes = 0;
     let mut state = StateInfo::new();
 
     for &mv in moves.as_slice() {
-        if !pos.is_legal(mv, bbs) {
+        if !pos.is_legal(mv) {
             continue;
         }
 
-        pos.make_move(mv, &mut state, bbs);
-        nodes += perft(pos, bbs, depth - 1);
-        pos.undo_move(mv, &state, bbs);
+        pos.make_move(mv, &mut state);
+        nodes += perft(pos, depth - 1);
+        pos.undo_move(mv, &state);
     }
 
     nodes
@@ -55,8 +54,6 @@ fn perft_is_correct() {
         "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
     ];
 
-    let bbs = Bitboards::init();
-
     for p in 0..POSITIONS {
         let fen = PERFT_FENS[p];
         let depth = PERFT_DEPTHS[p];
@@ -65,7 +62,7 @@ fn perft_is_correct() {
         let mut pos = Position::from_fen(fen);
         for d in 0..depth {
             let value = values[d];
-            let calculated = perft(&mut pos, &bbs, d);
+            let calculated = perft(&mut pos, d);
 
             assert_eq!(value, calculated);
         }

@@ -1,10 +1,8 @@
-use rust_engine::bitboard::Bitboards;
 use rust_engine::position::{DEFAULT_FEN, Position, StateInfo};
 use rust_engine::types::{Move, MoveFlag, Square};
 
 #[test]
 fn make_undo_move_loop() {
-    let bbs = Bitboards::init();
     let mut pos = Position::from_fen(DEFAULT_FEN);
     let mut state = StateInfo::new();
     state.set_from_position(&pos);
@@ -43,13 +41,13 @@ fn make_undo_move_loop() {
     // Find every position and state for the entire move sequence
     for (i, mv) in move_sequence.iter().enumerate() {
         positions[i] = pos;
-        pos.make_move(*mv, &mut state, &bbs);
+        pos.make_move(*mv, &mut state);
         states[i] = state;
     }
 
     // Compare undone positions to real versions
     for (i, mv) in move_sequence.iter().enumerate().rev() {
-        pos.undo_move(*mv, &states[i], &bbs);
+        pos.undo_move(*mv, &states[i]);
         assert_eq!(pos, positions[i]);
     }
 }
