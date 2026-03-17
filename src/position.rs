@@ -213,7 +213,7 @@ impl Position {
 
         // Move the piece
         self.remove_piece(us, piece, from);
-        self.zkey.toggle_piece(PieceCode::new(us, piece), to);
+        self.zkey.toggle_piece(PieceCode::new(us, piece), from);
         self.place_piece(us, to_piece, to);
         self.zkey.toggle_piece(PieceCode::new(us, to_piece), to);
 
@@ -221,9 +221,11 @@ impl Position {
         if let Some(side) = mv.castle_type() {
             let (rook_from, rook_to) = Castling::get_rook_squares_from_castle(us, side);
             self.remove_piece(us, Piece::Rook, rook_from);
-            self.zkey.toggle_piece(PieceCode::new(us, Piece::Rook), to);
+            self.zkey
+                .toggle_piece(PieceCode::new(us, Piece::Rook), rook_from);
             self.place_piece(us, Piece::Rook, rook_to);
-            self.zkey.toggle_piece(PieceCode::new(us, Piece::Rook), to);
+            self.zkey
+                .toggle_piece(PieceCode::new(us, Piece::Rook), rook_to);
         }
 
         // Pawn move resets halfmove clock
