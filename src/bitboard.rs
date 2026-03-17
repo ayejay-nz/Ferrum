@@ -16,6 +16,8 @@ impl Bitboard {
     pub const RANK_1: Bitboard = Bitboard(types::RANK_1);
     pub const RANK_2: Bitboard = Bitboard(types::RANK_2);
     pub const RANK_3: Bitboard = Bitboard(types::RANK_3);
+    pub const RANK_4: Bitboard = Bitboard(types::RANK_4);
+    pub const RANK_5: Bitboard = Bitboard(types::RANK_5);
     pub const RANK_6: Bitboard = Bitboard(types::RANK_6);
     pub const RANK_7: Bitboard = Bitboard(types::RANK_7);
     pub const RANK_8: Bitboard = Bitboard(types::RANK_8);

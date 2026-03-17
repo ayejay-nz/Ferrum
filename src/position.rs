@@ -80,6 +80,7 @@ pub struct Position {
     pub mailbox: Mailbox,
     pub pinned_pieces: [Bitboard; 2],
     pub pinners: [Bitboard; 2],
+    pub checkers: Bitboard,
     pub zkey: ZKey,
     pub fullmove_counter: u16,
     pub side_to_move: Colour,
@@ -101,6 +102,7 @@ impl Position {
             mailbox: Mailbox::new(),
             pinned_pieces: [Bitboard::new(0); 2],
             pinners: [Bitboard::new(0); 2],
+            checkers: Bitboard::new(0),
             zkey: zkey,
             fullmove_counter: 0,
             side_to_move: Colour::White,
@@ -244,6 +246,7 @@ impl Position {
 
         self.update_pins(Colour::White, bbs);
         self.update_pins(Colour::Black, bbs);
+        self.update_checkers(bbs);
     }
 
     #[inline(always)]
@@ -297,6 +300,7 @@ impl Position {
 
         self.update_pins(Colour::White, bbs);
         self.update_pins(Colour::Black, bbs);
+        self.update_checkers(bbs);
     }
 
     #[inline(always)]
@@ -342,6 +346,27 @@ impl Position {
     #[inline(always)]
     pub fn pinned_pieces(&self, c: Colour) -> Bitboard {
         self.pinned_pieces[c.idx()]
+    }
+
+    /// Find all checking pieces to the current sides king
+    #[inline(always)]
+    pub fn update_checkers(&mut self, bbs: &Bitboards) {
+        let us = self.side_to_move;
+        let occ = self.occupancy[2];
+        self.checkers = self.attackers_to(self.king_square(us), occ, bbs);
+    }
+
+    /// Compute a bitboard of all opponent attackers to a square
+    #[inline(always)]
+    pub fn attackers_to(&self, sq: Square, occ: Bitboard, bbs: &Bitboards) -> Bitboard {
+        let us = self.side_to_move;
+        let them = us.opposite();
+
+        return (bbs.bishop_attacks(sq, occ) & self.bishop_sliders(them))
+            | (bbs.rook_attacks(sq, occ) & self.rook_sliders(them))
+            | bbs.knight_attacks(sq) & self.pieces[them.idx()][Piece::Knight.idx()]
+            | bbs.pawn_attacks(sq, us) & self.pieces[them.idx()][Piece::Pawn.idx()]
+            | bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()];
     }
 
     /// Check if a square is attacked by the opponent
@@ -483,6 +508,7 @@ impl Position {
         let bbs = Bitboards::init();
         position.update_pins(Colour::White, &bbs);
         position.update_pins(Colour::Black, &bbs);
+        position.update_checkers(&bbs);
 
         return position;
     }
@@ -843,5 +869,39 @@ mod test {
         assert_eq!(pos.pinners[b.idx()], w_pinners);
         assert_eq!(pos.pinned_pieces[b.idx()], b_pinned);
         assert_eq!(pos.pinners[w.idx()], b_pinners);
+    }
+
+    #[test]
+    fn position_update_checkers_is_correct() {
+        let bbs = Bitboards::init();
+        let mut pos = Position::default();
+
+        // No checkers in default position
+        assert_eq!(pos.checkers, Bitboard::new(0));
+
+        // Gets all possible checkers for white
+        let mut expected = Bitboard::new(0);
+        expected.set_square(Square::B1);
+        expected.set_square(Square::G1);
+        expected.set_square(Square::D2);
+        expected.set_square(Square::E2);
+        expected.set_square(Square::E3);
+        expected.set_square(Square::A4);
+
+        pos = Position::from_fen("8/8/8/8/b7/4n3/3kp3/1q1K2r1 w - - 0 1");
+        assert_eq!(pos.checkers, expected);
+
+        // Gets all possible checkers for black
+        let mut expected = Bitboard::new(0);
+        expected.set_square(Square::D2);
+        expected.set_square(Square::H4);
+        expected.set_square(Square::C7);
+        expected.set_square(Square::F7);
+        expected.set_square(Square::B8);
+        expected.set_square(Square::E8);
+
+        pos = Position::from_fen("1Q1kK3/2P2N2/8/8/7B/8/3R4/5K2 b - - 0 1");
+        pos.update_checkers(&bbs);
+        assert_eq!(pos.checkers, expected);
     }
 }
