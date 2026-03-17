@@ -142,8 +142,6 @@ impl Position {
         let pc = PieceCode::new(colour, piece);
         self.mailbox.set_square(square, pc);
 
-        self.zkey.toggle_piece(pc, square);
-
         // Set white/black king squares
         if piece == Piece::King {
             match colour {
@@ -159,9 +157,6 @@ impl Position {
         self.occupancy[colour.idx()].clear_square(square);
         self.occupancy[2].clear_square(square);
         self.mailbox.clear_square(square);
-
-        let pc = PieceCode::new(colour, piece);
-        self.zkey.toggle_piece(pc, square);
     }
 
     #[inline(always)]
@@ -184,7 +179,8 @@ impl Position {
             self.fullmove_counter += 1;
         }
 
-        let colour = self.side_to_move;
+        let us = self.side_to_move;
+        let them = us.opposite();
         let from = mv.from();
         let to = mv.to();
         let piece = self.mailbox.piece_at(from).unwrap();
@@ -209,19 +205,25 @@ impl Position {
             };
             let captured_piece = self.mailbox.piece_at(capture_square).unwrap();
 
-            self.remove_piece(colour.opposite(), captured_piece, capture_square);
+            self.remove_piece(them, captured_piece, capture_square);
+            self.zkey
+                .toggle_piece(PieceCode::new(them, captured_piece), capture_square);
             state.captured_piece = Some(captured_piece);
         }
 
         // Move the piece
-        self.remove_piece(colour, piece, from);
-        self.place_piece(colour, to_piece, to);
+        self.remove_piece(us, piece, from);
+        self.zkey.toggle_piece(PieceCode::new(us, piece), to);
+        self.place_piece(us, to_piece, to);
+        self.zkey.toggle_piece(PieceCode::new(us, to_piece), to);
 
         // Move rook if it was a castling move
         if let Some(side) = mv.castle_type() {
-            let (rook_from, rook_to) = Castling::get_rook_squares_from_castle(colour, side);
-            self.remove_piece(colour, Piece::Rook, rook_from);
-            self.place_piece(colour, Piece::Rook, rook_to);
+            let (rook_from, rook_to) = Castling::get_rook_squares_from_castle(us, side);
+            self.remove_piece(us, Piece::Rook, rook_from);
+            self.zkey.toggle_piece(PieceCode::new(us, Piece::Rook), to);
+            self.place_piece(us, Piece::Rook, rook_to);
+            self.zkey.toggle_piece(PieceCode::new(us, Piece::Rook), to);
         }
 
         // Pawn move resets halfmove clock
@@ -233,7 +235,7 @@ impl Position {
                 let ep_square = Square::new((from.u8() + to.u8()) >> 1);
 
                 // Update the zkey only if the double pushed pawn has an opposition pawn next to it
-                if ep_hashable(&self.mailbox, ep_square, colour.opposite()) {
+                if ep_hashable(&self.mailbox, ep_square, them) {
                     self.zkey.toggle_ep_file(ep_square);
                 }
 
@@ -241,7 +243,7 @@ impl Position {
             }
         }
 
-        self.side_to_move = self.side_to_move.opposite();
+        self.side_to_move = them;
         self.zkey.toggle_side();
 
         self.update_pins(Colour::White);
@@ -717,7 +719,8 @@ mod test {
         pos.place_piece(Colour::Black, Piece::Pawn, Square::E7);
 
         let expected_fen = "4k2r/4p1b1/2n5/6B1/8/7N/4P3/R3K3 w - - 0 0";
-        let expected_pos = Position::from_fen(expected_fen);
+        let mut expected_pos = Position::from_fen(expected_fen);
+        expected_pos.zkey = pos.zkey;
         check_position_correctness(&pos, &expected_pos);
     }
 
@@ -736,7 +739,8 @@ mod test {
 
         // Note that remove_piece does not update castling rights
         let expected_fen = "r1bqk1nr/ppp1pp1p/8/8/8/8/PPP1PPP1/1NB1KBNR w KkQq - 0 1";
-        let expected_pos = Position::from_fen(expected_fen);
+        let mut expected_pos = Position::from_fen(expected_fen);
+        expected_pos.zkey = pos.zkey;
         check_position_correctness(&pos, &expected_pos);
     }
 
@@ -749,7 +753,8 @@ mod test {
             state.set_from_position(&pos);
 
             pos.make_move(case.mv, &mut state);
-            let expected_pos = Position::from_fen(case.expected_fen);
+            let mut expected_pos = Position::from_fen(case.expected_fen);
+            expected_pos.zkey = pos.zkey;
 
             check_position_correctness(&pos, &expected_pos);
 
