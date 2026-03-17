@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use std::fmt;
 
 use crate::bitboard::Bitboard;
 
@@ -110,6 +111,18 @@ impl Square {
 impl Default for Square {
     fn default() -> Self {
         Self::NONE
+    }
+}
+
+impl fmt::Display for Square {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_none() {
+            return f.write_str("-");
+        }
+
+        let file = (b'a' + self.file()) as char;
+        let rank = (b'1' + self.rank()) as char;
+        write!(f, "{file}{rank}")
     }
 }
 
