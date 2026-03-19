@@ -1,7 +1,5 @@
-use rust_engine::{position, search};
+use rust_engine::uci;
 
 fn main() {
-    let mut pos = position::Position::default();
-
-    search::search(&mut pos, 6);
+    uci::run();
 }

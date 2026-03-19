@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::{
     evaluate::{Eval, INFINITY, evaluate},
@@ -34,15 +34,51 @@ impl SearchResult {
     }
 }
 
+pub struct SearchLimits {
+    pub max_depth: i32,
+    pub move_time: Option<Duration>,
+}
+
+pub struct SearchContext {
+    pub stats: SearchStats,
+    pub stop_at: Option<Instant>,
+    pub stopped: bool,
+}
+
+impl SearchContext {
+    #[inline(always)]
+    fn should_stop(&mut self) -> bool {
+        if self.stopped {
+            return true;
+        }
+
+        // Only check stop time every 2048 nodes
+        if self.stats.nodes & 2047 != 0 {
+            return false;
+        }
+
+        if let Some(stop_at) = self.stop_at {
+            if Instant::now() >= stop_at {
+                self.stopped = true;
+            }
+        }
+
+        self.stopped
+    }
+}
+
 fn negamax(
     pos: &mut Position,
     depth: i32,
     ply: i32,
     mut alpha: Eval,
     beta: Eval,
-    stats: &mut SearchStats,
+    ctx: &mut SearchContext,
 ) -> Eval {
-    stats.nodes += 1;
+    ctx.stats.nodes += 1;
+    if ctx.should_stop() {
+        return 0;
+    }
 
     let moves = generate_legal(pos, &mut MoveList::new());
 
@@ -68,7 +104,7 @@ fn negamax(
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, depth - 1, ply + 1, -beta, -alpha, stats);
+        let score = -negamax(pos, depth - 1, ply + 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -88,7 +124,7 @@ fn negamax(
     best_score
 }
 
-fn search_root(pos: &mut Position, depth: i32, stats: &mut SearchStats) -> SearchResult {
+fn search_root(pos: &mut Position, depth: i32, ctx: &mut SearchContext) -> SearchResult {
     let moves = generate_legal(pos, &mut MoveList::new());
 
     let mut best_score = -INFINITY;
@@ -98,7 +134,7 @@ fn search_root(pos: &mut Position, depth: i32, stats: &mut SearchStats) -> Searc
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, depth - 1, 1, -INFINITY, INFINITY, stats);
+        let score = -negamax(pos, depth - 1, 1, -INFINITY, INFINITY, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -118,41 +154,49 @@ fn search_root(pos: &mut Position, depth: i32, stats: &mut SearchStats) -> Searc
 fn iterative_deepening(
     pos: &mut Position,
     max_depth: i32,
-    stats: &mut SearchStats,
+    ctx: &mut SearchContext,
 ) -> SearchResult {
     let mut best = SearchResult::new();
 
     for depth in 1..=max_depth {
-        best = search_root(pos, depth, stats);
+        if ctx.should_stop() {
+            break;
+        }
+
+        // We only want to keep results from completed iterations
+        let current = search_root(pos, depth, ctx);
+
+        if ctx.stopped {
+            break;
+        }
+
+        best = current;
     }
 
     best
 }
 
-pub fn search(pos: &mut Position, max_depth: i32) -> SearchResult {
-    let start = Instant::now();
-    let mut stats = SearchStats::new();
+fn first_legal_move(pos: &Position) -> Move {
+    let moves = generate_legal(pos, &mut MoveList::new());
+    moves.as_slice().first().copied().unwrap_or(Move::NULL)
+}
 
-    let result = iterative_deepening(pos, max_depth, &mut stats);
+pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
+    let stop_at = limits.move_time.map(|t| Instant::now() + t);
 
-    let secs = start.elapsed().as_secs_f64();
-    let nps = if secs > 0.0 {
-        (stats.nodes as f64 / secs) as u64
-    } else {
-        0
+    let mut ctx = SearchContext {
+        stats: SearchStats::new(),
+        stop_at,
+        stopped: false,
     };
 
-    println!(
-        "
-    best move: {}{}, evaluation: {}, depth: {}, nodes: {}, nps: {}, time elapsed: {}s",
-        result.best_move.from(),
-        result.best_move.to(),
-        result.score,
-        result.depth,
-        stats.nodes,
-        nps,
-        secs
-    );
+    let fallback = first_legal_move(pos);
+
+    let mut result = iterative_deepening(pos, limits.max_depth, &mut ctx);
+
+    if result.best_move == Move::NULL {
+        result.best_move = fallback;
+    }
 
     result
 }
