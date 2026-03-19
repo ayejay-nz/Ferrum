@@ -5,6 +5,7 @@ use crate::{
     movegen::{MoveList, generate_legal},
     position::{Position, StateInfo},
     types::Move,
+    uci,
 };
 
 pub struct SearchStats {
@@ -155,6 +156,7 @@ fn iterative_deepening(
     pos: &mut Position,
     max_depth: i32,
     ctx: &mut SearchContext,
+    start: Instant,
 ) -> SearchResult {
     let mut best = SearchResult::new();
 
@@ -170,6 +172,7 @@ fn iterative_deepening(
             break;
         }
 
+        uci::emit_uci_info(&current, ctx, start);
         best = current;
     }
 
@@ -182,7 +185,8 @@ fn first_legal_move(pos: &Position) -> Move {
 }
 
 pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
-    let stop_at = limits.move_time.map(|t| Instant::now() + t);
+    let start = Instant::now();
+    let stop_at = limits.move_time.map(|t| start + t);
 
     let mut ctx = SearchContext {
         stats: SearchStats::new(),
@@ -192,7 +196,7 @@ pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
 
     let fallback = first_legal_move(pos);
 
-    let mut result = iterative_deepening(pos, limits.max_depth, &mut ctx);
+    let mut result = iterative_deepening(pos, limits.max_depth, &mut ctx, start);
 
     if result.best_move == Move::NULL {
         result.best_move = fallback;

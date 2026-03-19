@@ -1,12 +1,12 @@
 use std::{
     io::{self, BufRead, Write},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
     movegen::{MoveList, generate_legal},
     position::{Position, StateInfo},
-    search::{self, SearchLimits},
+    search::{self, SearchContext, SearchLimits, SearchResult},
     types::{Colour, Move},
 };
 
@@ -121,6 +121,18 @@ fn parse_go_clock_time(command: &str, pos: &Position) -> Option<Duration> {
 
     // Small safety buffer
     Some(Duration::from_millis(think_ms.saturating_sub(10).max(5)))
+}
+
+pub fn emit_uci_info(result: &SearchResult, ctx: &SearchContext, start: Instant) {
+    let time_ms = start.elapsed().as_millis().max(1) as u64;
+    let nps = ctx.stats.nodes.saturating_mul(1000) / time_ms;
+
+    println!(
+        "info depth {} score cp {} time {} nodes {} nps {} pv {}",
+        result.depth, result.score, time_ms, ctx.stats.nodes, nps, result.best_move,
+    );
+
+    io::stdout().flush().unwrap();
 }
 
 pub fn run() {
