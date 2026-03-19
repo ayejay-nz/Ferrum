@@ -536,6 +536,25 @@ impl Move {
     }
 }
 
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut m = format!("{}{}", self.from(), self.to());
+
+        if let Some(piece) = self.promotion_piece() {
+            let p = match piece {
+                Piece::Knight => 'n',
+                Piece::Bishop => 'b',
+                Piece::Rook => 'r',
+                Piece::Queen => 'q',
+                _ => unreachable!(),
+            };
+            m.push(p);
+        };
+
+        write!(f, "{m}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
