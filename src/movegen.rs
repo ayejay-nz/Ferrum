@@ -472,6 +472,16 @@ pub fn generate_noisy(pos: &Position, moves: &mut MoveList) {
     generate_king_moves(pos, moves, GenType::Noisy);
 }
 
+pub fn generate_legal_noisy(pos: &Position, moves: &mut MoveList) -> MoveList {
+    debug_assert!(pos.checkers.is_empty());
+
+    let mut legal_moves = MoveList::new();
+    generate_noisy(pos, moves);
+    filter_moves(pos, moves, &mut legal_moves);
+
+    legal_moves
+}
+
 pub fn generate_quiets(pos: &Position, moves: &mut MoveList) {
     debug_assert!(pos.checkers.is_empty());
     moves.clear();

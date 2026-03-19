@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::{
     evaluate::{Eval, INFINITY, evaluate},
-    movegen::{MoveList, generate_legal},
+    movegen::{MoveList, generate_legal, generate_legal_noisy},
     position::{Position, StateInfo},
     types::Move,
     uci,
@@ -68,6 +68,94 @@ impl SearchContext {
     }
 }
 
+fn q_search(
+    pos: &mut Position,
+    ply: i32,
+    mut alpha: Eval,
+    beta: Eval,
+    ctx: &mut SearchContext,
+) -> Eval {
+    ctx.stats.nodes += 1;
+    if ctx.should_stop() {
+        return 0;
+    }
+
+    // If in check, search all legal evasions
+    if !pos.checkers.is_empty() {
+        let moves = generate_legal(pos, &mut MoveList::new());
+
+        if moves.is_empty() {
+            return -INFINITY + ply;
+        }
+
+        let mut best_score = -INFINITY;
+
+        for &mv in moves.as_slice() {
+            let mut state = StateInfo::new();
+            pos.make_move(mv, &mut state);
+
+            let score = -q_search(pos, ply + 1, -beta, -alpha, ctx);
+
+            pos.undo_move(mv, &state);
+
+            if ctx.stopped {
+                return 0;
+            }
+
+            if score >= beta {
+                return score;
+            }
+            if score > best_score {
+                best_score = score;
+            }
+            if score > alpha {
+                alpha = score;
+            }
+        }
+
+        return best_score;
+    }
+
+    // Stand pat - Assume at least one move can either match or beat the lower score bound
+    // Based on null move observation: assumes we are not in zugzwan
+    let stand_pat = evaluate(pos);
+    let mut best_score = stand_pat;
+
+    if stand_pat >= beta {
+        return stand_pat;
+    }
+    if stand_pat > alpha {
+        alpha = stand_pat;
+    }
+
+    let noisy_moves = generate_legal_noisy(pos, &mut MoveList::new());
+
+    for &mv in noisy_moves.as_slice() {
+        let mut state = StateInfo::new();
+        pos.make_move(mv, &mut state);
+
+        let score = -q_search(pos, ply + 1, -beta, -alpha, ctx);
+
+        pos.undo_move(mv, &state);
+
+        if ctx.stopped {
+            return 0;
+        }
+
+        if score >= beta {
+            return score;
+        }
+        if score > best_score {
+            best_score = score;
+        }
+        if score > alpha {
+            alpha = score;
+        }
+    }
+
+    best_score
+}
+
 fn negamax(
     pos: &mut Position,
     depth: i32,
@@ -96,7 +184,7 @@ fn negamax(
     }
 
     if depth == 0 {
-        return evaluate(pos);
+        return q_search(pos, ply, alpha, beta, ctx);
     }
 
     let mut best_score = -INFINITY;
