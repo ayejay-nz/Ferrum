@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::{
+    book::probe_opening_book,
     evaluate::{Eval, INFINITY, evaluate},
     movegen::{MoveList, generate_legal, generate_legal_noisy},
     position::{Position, StateInfo},
@@ -274,6 +275,28 @@ fn first_legal_move(pos: &Position) -> Move {
 
 pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
     let start = Instant::now();
+
+    if let Some(book_move) = probe_opening_book(pos) {
+        uci::emit_uci_info(
+            &SearchResult {
+                best_move: book_move,
+                score: 0,
+                depth: 0,
+            },
+            &SearchContext {
+                stats: SearchStats { nodes: 0 },
+                stop_at: Some(Instant::now()),
+                stopped: true,
+            },
+            start,
+        );
+        return SearchResult {
+            best_move: book_move,
+            score: 0,
+            depth: 0,
+        };
+    }
+
     let stop_at = limits.move_time.map(|t| start + t);
 
     let mut ctx = SearchContext {
