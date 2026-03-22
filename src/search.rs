@@ -73,6 +73,51 @@ impl SearchContext {
     }
 }
 
+const PV_BONUS: i32 = 1_000_000;
+const TT_BONUS: i32 = 900_000;
+const CAPTURE_BASE: i32 = 800_000;
+const PROMOTION_BASE: i32 = 700_000;
+const KILLER1_BONUS: i32 = 600_000;
+const KILLER2_BONUS: i32 = 599_000;
+
+const MAX_PLY: usize = 256;
+const MAX_HISTORY: i32 = 16384;
+
+pub struct OrderingTables {
+    killers: [[Move; 2]; MAX_PLY],
+    history: [[[i32; 64]; 64]; 2],
+}
+
+impl OrderingTables {
+    pub fn new() -> Self {
+        Self {
+            killers: [[Move::NULL; 2]; MAX_PLY],
+            history: [[[0; 64]; 64]; 2],
+        }
+    }
+}
+
+fn update_killers(killers: &mut [[Move; 2]; MAX_PLY], mv: Move, ply: usize) {
+    if ply >= MAX_PLY {
+        return;
+    }
+
+    // Insert killer move, ensuring it is unique at the ply level
+    if killers[ply][0] != mv {
+        killers[ply][1] = killers[ply][0];
+        killers[ply][0] = mv;
+    }
+}
+
+fn update_history(history: &mut [[[i32; 64]; 64]; 2], mv: Move, depth: i32, side: usize) {
+    let from = mv.from().idx();
+    let to = mv.from().idx();
+    let bonus = depth * depth;
+    let weight = history[side][from][to] + bonus;
+
+    history[side][from][to] = weight.min(MAX_HISTORY);
+}
+
 #[inline(always)]
 fn captured_piece(pos: &Position, mv: Move) -> Option<Piece> {
     if mv.is_ep_capture() {
@@ -88,45 +133,82 @@ fn is_mate_score(score: Eval) -> bool {
 }
 
 #[inline(always)]
-fn move_order_score(pos: &Position, mv: Move, pv_move: Move, tt_move: Move) -> i32 {
+fn move_order_score(
+    pos: &Position,
+    ordering: &OrderingTables,
+    ply: usize,
+    mv: Move,
+    pv_move: Move,
+    tt_move: Move,
+) -> i32 {
     // Always want PV move to be first, followed by TT-move
     if mv == pv_move {
-        return 1001;
+        return PV_BONUS;
     }
     if mv == tt_move {
-        return 1000;
+        return TT_BONUS;
     }
-
-    let attacker = pos.mailbox.piece_at(mv.from()).unwrap();
-    let mut score = 0;
 
     // MVV-LVA move ordering
     if let Some(victim) = captured_piece(pos, mv) {
-        score += 128 + 8 * (victim as i32 + 1) - attacker as i32
+        let attacker = pos.mailbox.piece_at(mv.from()).unwrap();
+        let mut score = CAPTURE_BASE + 8 * (victim as i32 + 1) - attacker as i32;
+
+        if let Some(promo) = mv.promotion_piece() {
+            score += match promo {
+                Piece::Queen => 40,
+                Piece::Knight => 30,
+                Piece::Rook => 20,
+                Piece::Bishop => 10,
+                _ => unreachable!(),
+            }
+        }
+
+        return score;
     }
 
     // Sort promotions in the order which they most commonly occur
     if let Some(promo) = mv.promotion_piece() {
-        match promo {
-            Piece::Queen => score += 4,
-            Piece::Knight => score += 3,
-            Piece::Rook => score += 2,
-            Piece::Bishop => score += 1,
-            _ => unreachable!(),
-        }
+        return PROMOTION_BASE
+            + match promo {
+                Piece::Queen => 40,
+                Piece::Knight => 30,
+                Piece::Rook => 20,
+                Piece::Bishop => 10,
+                _ => unreachable!(),
+            };
     }
 
-    score
+    // Sort killers moves
+    if mv == ordering.killers[ply][0] {
+        return KILLER1_BONUS;
+    }
+    if mv == ordering.killers[ply][1] {
+        return KILLER2_BONUS;
+    }
+
+    // Sort history moves
+    let side = pos.side_to_move.idx();
+    let piece = pos.mailbox.piece_at(mv.from()).unwrap().idx();
+    ordering.history[side][piece][mv.to().idx()]
 }
 
-fn order_moves(pos: &Position, moves: &mut MoveList, pv_move: Move, tt_move: Move) {
-    moves
-        .as_mut_slice()
-        .sort_unstable_by_key(|&mv| Reverse(move_order_score(pos, mv, pv_move, tt_move)));
+fn order_moves(
+    pos: &Position,
+    ordering: &OrderingTables,
+    ply: usize,
+    moves: &mut MoveList,
+    pv_move: Move,
+    tt_move: Move,
+) {
+    moves.as_mut_slice().sort_unstable_by_key(|&mv| {
+        Reverse(move_order_score(pos, ordering, ply, mv, pv_move, tt_move))
+    });
 }
 
 fn q_search(
     pos: &mut Position,
+    ordering: &OrderingTables,
     ply: i32,
     mut alpha: Eval,
     beta: Eval,
@@ -155,7 +237,7 @@ fn q_search(
             let mut state = StateInfo::new();
             pos.make_move(mv, &mut state);
 
-            let score = -q_search(pos, ply + 1, -beta, -alpha, ctx);
+            let score = -q_search(pos, ordering, ply + 1, -beta, -alpha, ctx);
 
             pos.undo_move(mv, &state);
 
@@ -190,13 +272,20 @@ fn q_search(
     }
 
     let mut noisy_moves = generate_legal_noisy(pos, &mut MoveList::new());
-    order_moves(pos, &mut noisy_moves, Move::NULL, Move::NULL);
+    order_moves(
+        pos,
+        ordering,
+        ply as usize,
+        &mut noisy_moves,
+        Move::NULL,
+        Move::NULL,
+    );
 
     for &mv in noisy_moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -q_search(pos, ply + 1, -beta, -alpha, ctx);
+        let score = -q_search(pos, ordering, ply + 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -221,6 +310,7 @@ fn q_search(
 fn negamax(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    ordering: &mut OrderingTables,
     depth: i32,
     ply: i32,
     mut alpha: Eval,
@@ -277,18 +367,18 @@ fn negamax(
     }
 
     if depth == 0 {
-        return q_search(pos, ply, alpha, beta, ctx);
+        return q_search(pos, ordering, ply, alpha, beta, ctx);
     }
 
     let mut best_score = -INFINITY;
     let mut best_move = Move::NULL;
 
-    order_moves(pos, &mut moves, Move::NULL, tt_move);
+    order_moves(pos, ordering, ply as usize, &mut moves, Move::NULL, tt_move);
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, tt, depth - 1, ply + 1, -beta, -alpha, ctx);
+        let score = -negamax(pos, tt, ordering, depth - 1, ply + 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -302,6 +392,10 @@ fn negamax(
         }
 
         if score >= beta {
+            if mv.is_quiet() {
+                update_killers(&mut ordering.killers, mv, ply as usize);
+                update_history(&mut ordering.history, mv, depth, pos.side_to_move.idx());
+            }
             break;
         }
     }
@@ -338,6 +432,7 @@ fn negamax(
 fn search_root(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    ordering: &mut OrderingTables,
     pv_move: Move,
     depth: i32,
     ctx: &mut SearchContext,
@@ -384,13 +479,13 @@ fn search_root(
         }
     }
 
-    order_moves(pos, &mut moves, pv_move, tt_move);
+    order_moves(pos, ordering, 0, &mut moves, pv_move, tt_move);
 
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, tt, depth - 1, 1, -beta, -alpha, ctx);
+        let score = -negamax(pos, tt, ordering, depth - 1, 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -404,7 +499,7 @@ fn search_root(
     }
 
     // Store values in transposition table
-    // Use full window for now, but will need to stop 
+    // Use full window for now, but will need to stop
     // using Exact when adding aspiration windows
     tt.store(
         pos.zkey,
@@ -426,6 +521,7 @@ fn search_root(
 fn iterative_deepening(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    ordering: &mut OrderingTables,
     max_depth: i32,
     ctx: &mut SearchContext,
     start: Instant,
@@ -437,7 +533,7 @@ fn iterative_deepening(
             break;
         }
 
-        let current = search_root(pos, tt, best.best_move, depth, ctx);
+        let current = search_root(pos, tt, ordering, best.best_move, depth, ctx);
 
         // We only want to keep results from completed iterations
         if ctx.stopped {
@@ -462,6 +558,8 @@ pub fn search(
     limits: SearchLimits,
 ) -> SearchResult {
     let start = Instant::now();
+
+    let mut ordering = OrderingTables::new();
 
     if let Some(book_move) = probe_opening_book(pos) {
         uci::emit_uci_info(
@@ -494,7 +592,7 @@ pub fn search(
 
     let fallback = first_legal_move(pos);
 
-    let mut result = iterative_deepening(pos, tt, limits.max_depth, &mut ctx, start);
+    let mut result = iterative_deepening(pos, tt, &mut ordering, limits.max_depth, &mut ctx, start);
 
     if result.best_move == Move::NULL {
         result.best_move = fallback;

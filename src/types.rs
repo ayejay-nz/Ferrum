@@ -534,6 +534,11 @@ impl Move {
     pub fn is_double_push(self) -> bool {
         self.flag() == MoveFlag::DoublePush
     }
+
+    #[inline(always)]
+    pub fn is_quiet(self) -> bool {
+        self.flag() == MoveFlag::Quiet
+    }
 }
 
 impl fmt::Display for Move {
