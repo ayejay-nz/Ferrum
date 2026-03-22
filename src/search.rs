@@ -137,6 +137,10 @@ fn q_search(
         return 0;
     }
 
+    if pos.halfmove_clock >= 100 {
+        return 0;
+    }
+
     // If in check, search all legal evasions
     if !pos.checkers.is_empty() {
         let moves = generate_legal(pos, &mut MoveList::new());
