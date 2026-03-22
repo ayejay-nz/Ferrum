@@ -352,17 +352,41 @@ fn search_root(
         };
     }
 
-    let tt_move = tt.probe(pos.zkey).map_or(Move::NULL, |hit| hit.mv);
-    order_moves(pos, &mut moves, pv_move, tt_move);
-
     let mut best_score = -INFINITY;
     let mut best_move = Move::NULL;
+
+    let mut alpha = -INFINITY;
+    let mut beta = INFINITY;
+    let mut tt_move = Move::NULL;
+
+    // Check transposition table
+    if let Some(hit) = tt.probe(pos.zkey) {
+        tt_move = hit.mv;
+
+        if hit.depth as i32 >= depth {
+            let bound_type = hit.node_info.bound_type();
+            let score = hit.value as Eval;
+
+            match bound_type {
+                BoundType::Exact => {
+                    alpha = score;
+                    best_score = score;
+                    best_move = tt_move;
+                }
+                BoundType::Upper => beta = beta.min(score),
+                BoundType::Lower => alpha = alpha.max(score),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    order_moves(pos, &mut moves, pv_move, tt_move);
 
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, tt, depth - 1, 1, -INFINITY, INFINITY, ctx);
+        let score = -negamax(pos, tt, depth - 1, 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -370,7 +394,23 @@ fn search_root(
             best_score = score;
             best_move = mv;
         }
+        if score > alpha {
+            alpha = score;
+        }
     }
+
+    // Store values in transposition table
+    // Use full window for now, but will need to stop 
+    // using Exact when adding aspiration windows
+    tt.store(
+        pos.zkey,
+        depth as u8,
+        best_move,
+        BoundType::Exact,
+        false,
+        best_score as i16,
+        evaluate(pos) as i16,
+    );
 
     SearchResult {
         best_move,
