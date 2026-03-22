@@ -7,6 +7,7 @@ use crate::{
     movegen::{MoveList, generate_legal},
     position::{Position, StateInfo},
     search::{self, SearchContext, SearchLimits, SearchResult},
+    tt::TranspositionTable,
     types::{Colour, Move},
 };
 
@@ -138,6 +139,7 @@ pub fn emit_uci_info(result: &SearchResult, ctx: &SearchContext, start: Instant)
 pub fn run() {
     let stdin = io::stdin();
     let mut pos = Position::default();
+    let mut tt = TranspositionTable::new(32);
 
     for line in stdin.lock().lines() {
         let line = line.unwrap();
@@ -150,6 +152,7 @@ pub fn run() {
             println!("readyok");
         } else if line == "ucinewgame" {
             pos = Position::default();
+            tt.clear();
         } else if line.starts_with("position ") {
             set_position(&mut pos, &line);
         } else if line.starts_with("go") {
@@ -157,7 +160,7 @@ pub fn run() {
                 max_depth: parse_go_depth(&line).unwrap_or(64),
                 move_time: parse_go_movetime(&line).or_else(|| parse_go_clock_time(&line, &pos)),
             };
-            let result = search::search(&mut pos, limits);
+            let result = search::search(&mut pos, &mut tt, limits);
             println!("bestmove {}", result.best_move);
         } else if line == "quit" {
             break;

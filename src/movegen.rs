@@ -55,6 +55,11 @@ impl MoveList {
     pub fn as_slice(&self) -> &[Move] {
         &self.moves[..self.len]
     }
+
+    #[inline(always)]
+    pub fn as_mut_slice(&mut self) -> &mut [Move] {
+        &mut self.moves[..self.len]
+    }
 }
 
 fn get_evasion_mask(pos: &Position) -> Bitboard {

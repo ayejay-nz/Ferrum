@@ -1,11 +1,15 @@
-use std::time::{Duration, Instant};
+use std::{
+    cmp::Reverse,
+    time::{Duration, Instant},
+};
 
 use crate::{
     book::probe_opening_book,
     evaluate::{Eval, INFINITY, evaluate},
     movegen::{MoveList, generate_legal, generate_legal_noisy},
     position::{Position, StateInfo},
-    types::Move,
+    tt::{BoundType, TranspositionTable},
+    types::{Move, Piece},
     uci,
 };
 
@@ -69,6 +73,58 @@ impl SearchContext {
     }
 }
 
+#[inline(always)]
+fn captured_piece(pos: &Position, mv: Move) -> Option<Piece> {
+    if mv.is_ep_capture() {
+        Some(Piece::Pawn)
+    } else {
+        pos.mailbox.piece_at(mv.to())
+    }
+}
+
+#[inline(always)]
+fn is_mate_score(score: Eval) -> bool {
+    score.abs() >= INFINITY - 1000
+}
+
+#[inline(always)]
+fn move_order_score(pos: &Position, mv: Move, pv_move: Move, tt_move: Move) -> i32 {
+    // Always want PV move to be first, followed by TT-move
+    if mv == pv_move {
+        return 1001;
+    }
+    if mv == tt_move {
+        return 1000;
+    }
+
+    let attacker = pos.mailbox.piece_at(mv.from()).unwrap();
+    let mut score = 0;
+
+    // MVV-LVA move ordering
+    if let Some(victim) = captured_piece(pos, mv) {
+        score += 128 + 8 * (victim as i32 + 1) - attacker as i32
+    }
+
+    // Sort promotions in the order which they most commonly occur
+    if let Some(promo) = mv.promotion_piece() {
+        match promo {
+            Piece::Queen => score += 4,
+            Piece::Knight => score += 3,
+            Piece::Rook => score += 2,
+            Piece::Bishop => score += 1,
+            _ => unreachable!(),
+        }
+    }
+
+    score
+}
+
+fn order_moves(pos: &Position, moves: &mut MoveList, pv_move: Move, tt_move: Move) {
+    moves
+        .as_mut_slice()
+        .sort_unstable_by_key(|&mv| Reverse(move_order_score(pos, mv, pv_move, tt_move)));
+}
+
 fn q_search(
     pos: &mut Position,
     ply: i32,
@@ -129,7 +185,8 @@ fn q_search(
         alpha = stand_pat;
     }
 
-    let noisy_moves = generate_legal_noisy(pos, &mut MoveList::new());
+    let mut noisy_moves = generate_legal_noisy(pos, &mut MoveList::new());
+    order_moves(pos, &mut noisy_moves, Move::NULL, Move::NULL);
 
     for &mv in noisy_moves.as_slice() {
         let mut state = StateInfo::new();
@@ -159,10 +216,11 @@ fn q_search(
 
 fn negamax(
     pos: &mut Position,
+    tt: &mut TranspositionTable,
     depth: i32,
     ply: i32,
     mut alpha: Eval,
-    beta: Eval,
+    mut beta: Eval,
     ctx: &mut SearchContext,
 ) -> Eval {
     ctx.stats.nodes += 1;
@@ -170,7 +228,41 @@ fn negamax(
         return 0;
     }
 
-    let moves = generate_legal(pos, &mut MoveList::new());
+    if pos.halfmove_clock >= 100 {
+        return 0;
+    }
+
+    let alpha_orig = alpha;
+    let beta_orig = beta;
+    let mut tt_move = Move::NULL;
+
+    // Check transposition table
+    if let Some(hit) = tt.probe(pos.zkey) {
+        tt_move = hit.mv;
+
+        if hit.depth as i32 >= depth {
+            let bound_type = hit.node_info.bound_type();
+
+            // Normalise mating distance across different depths
+            let mut score = hit.value as Eval;
+            if is_mate_score(score) {
+                score += if score > 0 { -ply } else { ply };
+            }
+
+            match bound_type {
+                BoundType::Exact => return score,
+                BoundType::Upper => beta = beta.min(score),
+                BoundType::Lower => alpha = alpha.max(score),
+                _ => unreachable!(),
+            }
+
+            if alpha >= beta {
+                return score;
+            }
+        }
+    }
+
+    let mut moves = generate_legal(pos, &mut MoveList::new());
 
     if moves.is_empty() {
         if pos.checkers.is_empty() {
@@ -180,26 +272,25 @@ fn negamax(
         }
     }
 
-    if pos.halfmove_clock >= 100 {
-        return 0;
-    }
-
     if depth == 0 {
         return q_search(pos, ply, alpha, beta, ctx);
     }
 
     let mut best_score = -INFINITY;
+    let mut best_move = Move::NULL;
 
+    order_moves(pos, &mut moves, Move::NULL, tt_move);
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, depth - 1, ply + 1, -beta, -alpha, ctx);
+        let score = -negamax(pos, tt, depth - 1, ply + 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
 
         if score > best_score {
             best_score = score;
+            best_move = mv;
 
             if score > alpha {
                 alpha = score;
@@ -211,11 +302,58 @@ fn negamax(
         }
     }
 
+    // Store values in transposition table
+    let bound;
+    if best_score <= alpha_orig {
+        bound = BoundType::Upper;
+    } else if best_score >= beta_orig {
+        bound = BoundType::Lower;
+    } else {
+        bound = BoundType::Exact;
+    }
+
+    // Normalise mating score before storing
+    let mut value = best_score;
+    if is_mate_score(value) {
+        value += if value > 0 { ply } else { -ply };
+    }
+
+    tt.store(
+        pos.zkey,
+        depth as u8,
+        best_move,
+        bound,
+        false,
+        value as i16,
+        evaluate(pos) as i16,
+    );
+
     best_score
 }
 
-fn search_root(pos: &mut Position, depth: i32, ctx: &mut SearchContext) -> SearchResult {
-    let moves = generate_legal(pos, &mut MoveList::new());
+fn search_root(
+    pos: &mut Position,
+    tt: &mut TranspositionTable,
+    pv_move: Move,
+    depth: i32,
+    ctx: &mut SearchContext,
+) -> SearchResult {
+    let mut moves = generate_legal(pos, &mut MoveList::new());
+
+    if moves.is_empty() {
+        return SearchResult {
+            best_move: Move::NULL,
+            score: if pos.checkers.is_empty() {
+                0
+            } else {
+                -INFINITY
+            },
+            depth,
+        };
+    }
+
+    let tt_move = tt.probe(pos.zkey).map_or(Move::NULL, |hit| hit.mv);
+    order_moves(pos, &mut moves, pv_move, tt_move);
 
     let mut best_score = -INFINITY;
     let mut best_move = Move::NULL;
@@ -224,7 +362,7 @@ fn search_root(pos: &mut Position, depth: i32, ctx: &mut SearchContext) -> Searc
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
 
-        let score = -negamax(pos, depth - 1, 1, -INFINITY, INFINITY, ctx);
+        let score = -negamax(pos, tt, depth - 1, 1, -INFINITY, INFINITY, ctx);
 
         pos.undo_move(mv, &state);
 
@@ -243,6 +381,7 @@ fn search_root(pos: &mut Position, depth: i32, ctx: &mut SearchContext) -> Searc
 
 fn iterative_deepening(
     pos: &mut Position,
+    tt: &mut TranspositionTable,
     max_depth: i32,
     ctx: &mut SearchContext,
     start: Instant,
@@ -254,9 +393,9 @@ fn iterative_deepening(
             break;
         }
 
-        // We only want to keep results from completed iterations
-        let current = search_root(pos, depth, ctx);
+        let current = search_root(pos, tt, best.best_move, depth, ctx);
 
+        // We only want to keep results from completed iterations
         if ctx.stopped {
             break;
         }
@@ -273,7 +412,11 @@ fn first_legal_move(pos: &Position) -> Move {
     moves.as_slice().first().copied().unwrap_or(Move::NULL)
 }
 
-pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
+pub fn search(
+    pos: &mut Position,
+    tt: &mut TranspositionTable,
+    limits: SearchLimits,
+) -> SearchResult {
     let start = Instant::now();
 
     if let Some(book_move) = probe_opening_book(pos) {
@@ -307,11 +450,13 @@ pub fn search(pos: &mut Position, limits: SearchLimits) -> SearchResult {
 
     let fallback = first_legal_move(pos);
 
-    let mut result = iterative_deepening(pos, limits.max_depth, &mut ctx, start);
+    let mut result = iterative_deepening(pos, tt, limits.max_depth, &mut ctx, start);
 
     if result.best_move == Move::NULL {
         result.best_move = fallback;
     }
+
+    tt.increment_age();
 
     result
 }
