@@ -225,6 +225,52 @@ fn is_repetition(pos: &Position, rep_history: &[ZKey]) -> bool {
     false
 }
 
+/// Check if the provided conditions allow for LMR
+///
+/// Don't perform LMR on:
+/// - Captures and promotions
+/// - Moves while in check
+/// - Moves which give check
+/// - Killer moves
+/// - Depth is too low (depth < 3)
+#[inline(always)]
+fn can_lmr(
+    pos: &Position,
+    killers: &[[Move; 2]; MAX_PLY],
+    mv: Move,
+    in_check: bool,
+    depth: i32,
+    ply: i32,
+) -> bool {
+    if depth < 3 {
+        return false;
+    }
+    if mv.is_capture() || mv.is_promotion() {
+        return false;
+    }
+    if in_check || !pos.checkers.is_empty() {
+        return false;
+    }
+    if killers[ply as usize].contains(&mv) {
+        return false;
+    }
+
+    true
+}
+
+#[inline(always)]
+fn lmr_reduction(idx: usize) -> i32 {
+    // Dont reduce on first 3 moves
+    if idx < 3 {
+        return 0;
+    }
+    if idx > 12 {
+        return 2;
+    }
+
+    1
+}
+
 fn q_search(
     pos: &mut Position,
     rep_history: &mut Vec<ZKey>,
@@ -337,6 +383,84 @@ fn q_search(
     best_score
 }
 
+fn search_child(
+    pos: &mut Position,
+    tt: &mut TranspositionTable,
+    rep_history: &mut Vec<ZKey>,
+    ordering: &mut OrderingTables,
+    depth: i32,
+    ply: i32,
+    alpha: Eval,
+    beta: Eval,
+    ctx: &mut SearchContext,
+    is_first_move: bool,
+    reduction: i32,
+) -> Eval {
+    if is_first_move {
+        return -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            depth - 1,
+            ply + 1,
+            -beta,
+            -alpha,
+            ctx,
+        );
+    }
+
+    // Reduced depth search using null window
+    if reduction > 0 {
+        let score = -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            depth - 1 - reduction,
+            ply + 1,
+            -(alpha + 1),
+            -alpha,
+            ctx,
+        );
+
+        // If reduced search beats alpha we have missed something
+        if score <= alpha {
+            return score;
+        }
+    }
+
+    // Perform full depth search using null window
+    let score = -negamax(
+        pos,
+        tt,
+        rep_history,
+        ordering,
+        depth - 1,
+        ply + 1,
+        -(alpha + 1),
+        -alpha,
+        ctx,
+    );
+
+    // Perform full depth search using full window
+    if alpha < score && score < beta {
+        return -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            depth - 1,
+            ply + 1,
+            -beta,
+            -alpha,
+            ctx,
+        );
+    }
+
+    score
+}
+
 fn negamax(
     pos: &mut Position,
     tt: &mut TranspositionTable,
@@ -410,22 +534,32 @@ fn negamax(
     let mut best_score = -INFINITY;
     let mut best_move = Move::NULL;
 
+    let in_check = !pos.checkers.is_empty();
+
     order_moves(pos, ordering, ply as usize, &mut moves, Move::NULL, tt_move);
-    for &mv in moves.as_slice() {
+    for (idx, &mv) in moves.as_slice().iter().enumerate() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
         rep_history.push(pos.zkey);
 
-        let score = -negamax(
+        let reduction = if can_lmr(pos, &ordering.killers, mv, in_check, depth, ply) {
+            lmr_reduction(idx)
+        } else {
+            0
+        };
+
+        let score = search_child(
             pos,
             tt,
             rep_history,
             ordering,
-            depth - 1,
-            ply + 1,
-            -beta,
-            -alpha,
+            depth,
+            ply,
+            alpha,
+            beta,
             ctx,
+            idx == 0,
+            reduction,
         );
 
         pos.undo_move(mv, &state);
