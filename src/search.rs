@@ -112,7 +112,7 @@ fn update_killers(killers: &mut [[Move; 2]; MAX_PLY], mv: Move, ply: usize) {
 
 fn update_history(history: &mut [[[i32; 64]; 64]; 2], mv: Move, depth: i32, side: usize) {
     let from = mv.from().idx();
-    let to = mv.from().idx();
+    let to = mv.to().idx();
     let bonus = depth * depth;
     let weight = history[side][from][to] + bonus;
 
@@ -190,8 +190,7 @@ fn move_order_score(
 
     // Sort history moves
     let side = pos.side_to_move.idx();
-    let piece = pos.mailbox.piece_at(mv.from()).unwrap().idx();
-    ordering.history[side][piece][mv.to().idx()]
+    ordering.history[side][mv.from().idx()][mv.to().idx()]
 }
 
 fn order_moves(
