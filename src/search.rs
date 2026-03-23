@@ -620,31 +620,34 @@ pub fn search(
     tt: &mut TranspositionTable,
     history: &[ZKey],
     limits: SearchLimits,
+    use_book: bool,
 ) -> SearchResult {
     let start = Instant::now();
 
     let mut rep_history = history.to_vec();
     let mut ordering = OrderingTables::new();
 
-    if let Some(book_move) = probe_opening_book(pos) {
-        uci::emit_uci_info(
-            &SearchResult {
+    if use_book {
+        if let Some(book_move) = probe_opening_book(pos) {
+            uci::emit_uci_info(
+                &SearchResult {
+                    best_move: book_move,
+                    score: 0,
+                    depth: 0,
+                },
+                &SearchContext {
+                    stats: SearchStats { nodes: 0 },
+                    stop_at: Some(Instant::now()),
+                    stopped: true,
+                },
+                start,
+            );
+            return SearchResult {
                 best_move: book_move,
                 score: 0,
                 depth: 0,
-            },
-            &SearchContext {
-                stats: SearchStats { nodes: 0 },
-                stop_at: Some(Instant::now()),
-                stopped: true,
-            },
-            start,
-        );
-        return SearchResult {
-            best_move: book_move,
-            score: 0,
-            depth: 0,
-        };
+            };
+        }
     }
 
     let stop_at = limits.move_time.map(|t| start + t);

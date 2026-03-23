@@ -12,6 +12,39 @@ use crate::{
     zobrist::ZKey,
 };
 
+#[derive(Copy, Clone)]
+struct EngineOptions {
+    use_book: bool,
+}
+
+impl Default for EngineOptions {
+    fn default() -> Self {
+        Self { use_book: true }
+    }
+}
+
+fn parse_setoption_use_book(command: &str) -> Option<bool> {
+    let parts: Vec<&str> = command.split_whitespace().collect();
+
+    if parts.first().copied() != Some("setoption") {
+        return None;
+    }
+
+    let name_idx = parts.iter().position(|&p| p == "name")?;
+    let value_idx = parts.iter().position(|&p| p == "value")?;
+
+    let name = parts[name_idx + 1..value_idx].join(" ");
+    if name != "UseBook" {
+        return None;
+    }
+
+    match parts.get(value_idx + 1)?.to_ascii_lowercase().as_str() {
+        "true" | "1" | "on" => Some(true),
+        "false" | "0" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 fn parse_uci_move(pos: &Position, text: &str) -> Option<Move> {
     let moves = generate_legal(pos, &mut MoveList::new());
 
@@ -155,12 +188,15 @@ pub fn run() {
     let mut history: Vec<ZKey> = Vec::with_capacity(128);
     history.push(pos.zkey);
 
+    let mut options = EngineOptions::default();
+
     for line in stdin.lock().lines() {
         let line = line.unwrap();
 
         if line == "uci" {
             println!("id name rust_engine");
             println!("id author ayejay");
+            println!("option name UseBook type check default true");
             println!("uciok");
         } else if line == "isready" {
             println!("readyok");
@@ -176,8 +212,12 @@ pub fn run() {
                 max_depth: parse_go_depth(&line).unwrap_or(64),
                 move_time: parse_go_movetime(&line).or_else(|| parse_go_clock_time(&line, &pos)),
             };
-            let result = search::search(&mut pos, &mut tt, &history, limits);
+            let result = search::search(&mut pos, &mut tt, &history, limits, options.use_book);
             println!("bestmove {}", result.best_move);
+        } else if line.starts_with("setoption ") {
+            if let Some(use_book) = parse_setoption_use_book(&line) {
+                options.use_book = use_book;
+            }
         } else if line == "quit" {
             break;
         }
