@@ -444,6 +444,66 @@ impl Position {
             || !(bbs.line_bb(from, to) & self.king_square(us).bitboard()).is_empty();
     }
 
+    #[inline(always)]
+    pub fn insufficient_material(&self) -> bool {
+        let white = self.pieces[Colour::White.idx()];
+        let black = self.pieces[Colour::Black.idx()];
+
+        // Sufficient material to continue
+        if !(white[Piece::Pawn.idx()]
+            | black[Piece::Pawn.idx()]
+            | white[Piece::Rook.idx()]
+            | black[Piece::Rook.idx()]
+            | white[Piece::Queen.idx()]
+            | black[Piece::Queen.idx()])
+        .is_empty()
+        {
+            return false;
+        }
+
+        let white_knights = white[Piece::Knight.idx()].bit_count();
+        let black_knights = black[Piece::Knight.idx()].bit_count();
+        let white_bishops = white[Piece::Bishop.idx()].bit_count();
+        let black_bishops = black[Piece::Bishop.idx()].bit_count();
+
+        let white_minors = white_knights + white_bishops;
+        let black_minors = black_knights + black_bishops;
+        let minor_pieces = white_minors + black_minors;
+
+        // We only need to do a detailed check for insufficient material
+        // in the case of two minor pieces, as other cases are trivial
+        if minor_pieces < 2 {
+            return true;
+        }
+        if minor_pieces > 2 {
+            return false;
+        }
+
+        // Sufficient material if each side has an opposite coloured bishop
+        if white_bishops == 1 && black_bishops == 1 {
+            let wb_square = white[Piece::Bishop.idx()].lsb();
+            let bb_square = black[Piece::Bishop.idx()].lsb();
+
+            return wb_square.colour() == bb_square.colour();
+        }
+
+        // Sufficient material only if one side has opposite coloured bishops
+        if white_bishops == 2 || black_bishops == 2 {
+            let mut bishops_bb = match white_bishops {
+                0 => black[Piece::Bishop.idx()],
+                2 => white[Piece::Bishop.idx()],
+                _ => unreachable!(),
+            };
+
+            let bishop1 = bishops_bb.pop_lsb();
+            let bishop2 = bishops_bb.pop_lsb();
+
+            return bishop1.colour() == bishop2.colour();
+        }
+
+        false
+    }
+
     pub fn from_fen(fen: &str) -> Self {
         // 0 - piece placement
         // 1 - side to move
@@ -911,5 +971,60 @@ mod test {
         pos = Position::from_fen("1Q1kK3/2P2N2/8/8/7B/8/3R4/5K2 b - - 0 1");
         pos.update_checkers();
         assert_eq!(pos.checkers, expected);
+    }
+
+    fn positions_have_sufficient_material(positions: &[Position]) {
+        for &pos in positions {
+            assert_eq!(pos.insufficient_material(), false);
+        }
+    }
+
+    fn positions_have_insufficient_material(positions: &[Position]) {
+        for &pos in positions {
+            assert!(pos.insufficient_material());
+        }
+    }
+
+    #[test]
+    fn position_insufficient_material_is_correct() {
+        // One bishop/knight is insufficient
+        let pos1 = Position::from_fen("3k4/5b2/8/8/8/8/8/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/8/8/8/8/5N2/8/3K4 b - - 0 1");
+        positions_have_insufficient_material(&[pos1, pos2]);
+
+        // More than two bishops/knights is sufficient
+        let pos1 = Position::from_fen("3k4/4b3/8/8/8/4BN2/8/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/4b3/5b2/8/8/1N6/8/3K4 b - - 0 1");
+        positions_have_sufficient_material(&[pos1, pos2]);
+
+        // One pawn, rook, or queen is sufficient
+        let pos1 = Position::from_fen("3k4/8/8/8/8/8/5R2/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/8/8/8/8/8/5Q2/3K4 b - - 0 1");
+        let pos3 = Position::from_fen("3k4/8/8/8/8/8/5P2/3K4 w - - 0 1");
+        positions_have_sufficient_material(&[pos1, pos2, pos3]);
+
+        // Opposite coloured bishops are always sufficient
+        let pos1 = Position::from_fen("3k4/8/8/8/8/8/4BB2/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/4bb2/8/8/8/8/8/3K4 b - - 0 1");
+        let pos3 = Position::from_fen("3k4/5b2/8/8/8/8/5B2/3K4 b - - 0 1");
+        positions_have_sufficient_material(&[pos1, pos2, pos3]);
+
+        // Two knights are always sufficient
+        let pos1 = Position::from_fen("3k4/8/8/8/8/3NN3/8/3K4 b - - 0 1");
+        let pos2 = Position::from_fen("3k4/4nn2/8/8/8/8/8/3K4 w - - 0 1");
+        let pos3 = Position::from_fen("3k4/5n2/8/8/8/3N4/8/3K4 w - - 0 1");
+        positions_have_sufficient_material(&[pos1, pos2, pos3]);
+
+        // Bishop + knight is always sufficient
+        let pos1 = Position::from_fen("3k4/8/8/8/8/3NB3/8/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/5n2/8/1b6/8/8/8/3K4 w - - 0 1");
+        let pos3 = Position::from_fen("3k4/4n3/8/8/8/4B3/8/3K4 w - - 0 1");
+        positions_have_sufficient_material(&[pos1, pos2, pos3]);
+
+        // Same coloured bishops are insufficient
+        let pos1 = Position::from_fen("3k4/8/8/8/8/3B4/4B3/3K4 w - - 0 1");
+        let pos2 = Position::from_fen("3k4/4b3/5b2/8/8/8/8/3K4 w - - 0 1");
+        let pos3 = Position::from_fen("3k4/4b3/8/8/8/8/5B2/3K4 w - - 0 1");
+        positions_have_insufficient_material(&[pos1, pos2, pos3]);
     }
 }

@@ -106,6 +106,15 @@ impl Square {
     pub fn file_bb(self) -> Bitboard {
         Bitboard::FILE_A << self.file()
     }
+
+    #[inline(always)]
+    pub fn colour(self) -> Colour {
+        match (self.file() + self.rank() + 1) % 2 {
+            0 => Colour::White,
+            1 => Colour::Black,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Default for Square {
@@ -616,6 +625,15 @@ mod tests {
         assert_eq!(Square::E4.bit(), 2u64.pow(28));
         assert_eq!(Square::H1.bit(), 2u64.pow(7));
         assert_eq!(Square::H8.bit(), 2u64.pow(63));
+    }
+
+    #[test]
+    fn square_colour_is_correct() {
+        assert_eq!(Square::A1.colour(), Colour::Black);
+        assert_eq!(Square::A8.colour(), Colour::White);
+        assert_eq!(Square::H1.colour(), Colour::White);
+        assert_eq!(Square::H8.colour(), Colour::Black);
+        assert_eq!(Square::E4.colour(), Colour::White);
     }
 
     // --- Pieces ---

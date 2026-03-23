@@ -11,6 +11,7 @@ use crate::{
     tt::{BoundType, TranspositionTable},
     types::{Move, Piece},
     uci,
+    zobrist::ZKey,
 };
 
 pub struct SearchStats {
@@ -206,8 +207,28 @@ fn order_moves(
     });
 }
 
+fn is_repetition(pos: &Position, rep_history: &[ZKey]) -> bool {
+    // We only need to find one more instance of position in history to consider it a draw
+    let mut back = 2usize;
+    let limit = pos.halfmove_clock as usize;
+
+    let max_back = limit.min(rep_history.len() - 1);
+
+    while back <= max_back {
+        if let Some(&prev_key) = rep_history.get(rep_history.len() - 1 - back) {
+            if prev_key == pos.zkey {
+                return true;
+            }
+        }
+        back += 2;
+    }
+
+    false
+}
+
 fn q_search(
     pos: &mut Position,
+    rep_history: &mut Vec<ZKey>,
     ordering: &OrderingTables,
     ply: i32,
     mut alpha: Eval,
@@ -220,6 +241,12 @@ fn q_search(
     }
 
     if pos.halfmove_clock >= 100 {
+        return 0;
+    }
+    if is_repetition(pos, rep_history) {
+        return 0;
+    }
+    if pos.insufficient_material() {
         return 0;
     }
 
@@ -236,10 +263,12 @@ fn q_search(
         for &mv in moves.as_slice() {
             let mut state = StateInfo::new();
             pos.make_move(mv, &mut state);
+            rep_history.push(pos.zkey);
 
-            let score = -q_search(pos, ordering, ply + 1, -beta, -alpha, ctx);
+            let score = -q_search(pos, rep_history, ordering, ply + 1, -beta, -alpha, ctx);
 
             pos.undo_move(mv, &state);
+            rep_history.pop();
 
             if ctx.stopped {
                 return 0;
@@ -284,10 +313,12 @@ fn q_search(
     for &mv in noisy_moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
+        rep_history.push(pos.zkey);
 
-        let score = -q_search(pos, ordering, ply + 1, -beta, -alpha, ctx);
+        let score = -q_search(pos, rep_history, ordering, ply + 1, -beta, -alpha, ctx);
 
         pos.undo_move(mv, &state);
+        rep_history.pop();
 
         if ctx.stopped {
             return 0;
@@ -310,6 +341,7 @@ fn q_search(
 fn negamax(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    rep_history: &mut Vec<ZKey>,
     ordering: &mut OrderingTables,
     depth: i32,
     ply: i32,
@@ -323,6 +355,12 @@ fn negamax(
     }
 
     if pos.halfmove_clock >= 100 {
+        return 0;
+    }
+    if is_repetition(pos, rep_history) {
+        return 0;
+    }
+    if pos.insufficient_material() {
         return 0;
     }
 
@@ -367,7 +405,7 @@ fn negamax(
     }
 
     if depth == 0 {
-        return q_search(pos, ordering, ply, alpha, beta, ctx);
+        return q_search(pos, rep_history, ordering, ply, alpha, beta, ctx);
     }
 
     let mut best_score = -INFINITY;
@@ -377,10 +415,22 @@ fn negamax(
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
+        rep_history.push(pos.zkey);
 
-        let score = -negamax(pos, tt, ordering, depth - 1, ply + 1, -beta, -alpha, ctx);
+        let score = -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            depth - 1,
+            ply + 1,
+            -beta,
+            -alpha,
+            ctx,
+        );
 
         pos.undo_move(mv, &state);
+        rep_history.pop();
 
         if score > best_score {
             best_score = score;
@@ -432,6 +482,7 @@ fn negamax(
 fn search_root(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    rep_history: &mut Vec<ZKey>,
     ordering: &mut OrderingTables,
     pv_move: Move,
     depth: i32,
@@ -484,10 +535,22 @@ fn search_root(
     for &mv in moves.as_slice() {
         let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
+        rep_history.push(pos.zkey);
 
-        let score = -negamax(pos, tt, ordering, depth - 1, 1, -beta, -alpha, ctx);
+        let score = -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            depth - 1,
+            1,
+            -beta,
+            -alpha,
+            ctx,
+        );
 
         pos.undo_move(mv, &state);
+        rep_history.pop();
 
         if score > best_score {
             best_score = score;
@@ -521,6 +584,7 @@ fn search_root(
 fn iterative_deepening(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    rep_history: &mut Vec<ZKey>,
     ordering: &mut OrderingTables,
     max_depth: i32,
     ctx: &mut SearchContext,
@@ -533,7 +597,7 @@ fn iterative_deepening(
             break;
         }
 
-        let current = search_root(pos, tt, ordering, best.best_move, depth, ctx);
+        let current = search_root(pos, tt, rep_history, ordering, best.best_move, depth, ctx);
 
         // We only want to keep results from completed iterations
         if ctx.stopped {
@@ -555,10 +619,12 @@ fn first_legal_move(pos: &Position) -> Move {
 pub fn search(
     pos: &mut Position,
     tt: &mut TranspositionTable,
+    history: &[ZKey],
     limits: SearchLimits,
 ) -> SearchResult {
     let start = Instant::now();
 
+    let mut rep_history = history.to_vec();
     let mut ordering = OrderingTables::new();
 
     if let Some(book_move) = probe_opening_book(pos) {
@@ -592,7 +658,15 @@ pub fn search(
 
     let fallback = first_legal_move(pos);
 
-    let mut result = iterative_deepening(pos, tt, &mut ordering, limits.max_depth, &mut ctx, start);
+    let mut result = iterative_deepening(
+        pos,
+        tt,
+        &mut rep_history,
+        &mut ordering,
+        limits.max_depth,
+        &mut ctx,
+        start,
+    );
 
     if result.best_move == Move::NULL {
         result.best_move = fallback;

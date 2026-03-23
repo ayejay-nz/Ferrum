@@ -8,7 +8,8 @@ use crate::{
     position::{Position, StateInfo},
     search::{self, SearchContext, SearchLimits, SearchResult},
     tt::TranspositionTable,
-    types::{Colour, Move},
+    types::{Colour, Move, Piece},
+    zobrist::ZKey,
 };
 
 fn parse_uci_move(pos: &Position, text: &str) -> Option<Move> {
@@ -21,11 +22,12 @@ fn parse_uci_move(pos: &Position, text: &str) -> Option<Move> {
         .find(|&mv| mv.to_string() == text)
 }
 
-fn set_position(pos: &mut Position, command: &str) {
+fn set_position(pos: &mut Position, history: &mut Vec<ZKey>, command: &str) {
     // UCI format:
     // position startpos [moves ...]
     // position fen <fen-string> [moves ...]
 
+    history.clear();
     let mut parts = command.split_whitespace();
 
     if parts.next() != Some("position") {
@@ -46,14 +48,24 @@ fn set_position(pos: &mut Position, command: &str) {
         _ => return,
     }
 
+    history.push(pos.zkey);
+
     if parts.next() == Some("moves") {
         for mv_text in parts {
             let Some(mv) = parse_uci_move(pos, mv_text) else {
                 return;
             };
 
+            let irreversible =
+                mv.is_capture() || pos.mailbox.piece_at(mv.from()) == Some(Piece::Pawn);
+
             let mut state = StateInfo::new();
             pos.make_move(mv, &mut state);
+
+            if irreversible {
+                history.clear();
+            }
+            history.push(pos.zkey);
         }
     }
 }
@@ -140,6 +152,8 @@ pub fn run() {
     let stdin = io::stdin();
     let mut pos = Position::default();
     let mut tt = TranspositionTable::new(32);
+    let mut history: Vec<ZKey> = Vec::with_capacity(128);
+    history.push(pos.zkey);
 
     for line in stdin.lock().lines() {
         let line = line.unwrap();
@@ -153,14 +167,16 @@ pub fn run() {
         } else if line == "ucinewgame" {
             pos = Position::default();
             tt.clear();
+            history.clear();
+            history.push(pos.zkey);
         } else if line.starts_with("position ") {
-            set_position(&mut pos, &line);
+            set_position(&mut pos, &mut history, &line);
         } else if line.starts_with("go") {
             let limits = SearchLimits {
                 max_depth: parse_go_depth(&line).unwrap_or(64),
                 move_time: parse_go_movetime(&line).or_else(|| parse_go_clock_time(&line, &pos)),
             };
-            let result = search::search(&mut pos, &mut tt, limits);
+            let result = search::search(&mut pos, &mut tt, &history, limits);
             println!("bestmove {}", result.best_move);
         } else if line == "quit" {
             break;
