@@ -307,6 +307,54 @@ impl Position {
         self.update_checkers();
     }
 
+    /// Flip the side to move without performing any move on the board
+    #[inline(always)]
+    pub fn make_null_move(&mut self, state: &mut StateInfo) {
+        debug_assert!(self.checkers.is_empty());
+
+        state.zkey = self.zkey;
+        state.ep_square = self.ep_square;
+        state.halfmove_clock = self.halfmove_clock;
+        state.fullmove_counter = self.fullmove_counter;
+
+        self.halfmove_clock += 1;
+        if self.side_to_move == Colour::Black {
+            self.fullmove_counter += 1;
+        }
+
+        // Unhash old en passant file if it exists
+        if ep_hashable(&self.mailbox, self.ep_square, self.side_to_move) {
+            self.zkey.toggle_ep_file(self.ep_square);
+        }
+        self.ep_square = Square::NONE;
+
+        self.side_to_move = self.side_to_move.opposite();
+        self.zkey.toggle_side();
+
+        self.update_checkers();
+    }
+
+    #[inline(always)]
+    pub fn undo_null_move(&mut self, prev: &StateInfo) {
+        self.zkey = prev.zkey;
+        self.halfmove_clock = prev.halfmove_clock;
+        self.fullmove_counter = prev.fullmove_counter;
+        self.ep_square = prev.ep_square;
+        self.side_to_move = self.side_to_move.opposite();
+
+        self.update_checkers();
+    }
+
+    /// Return a bitboard of all non-pawn pieces (excluding king) for the provided side
+    #[inline(always)]
+    pub fn non_pawn_material(&self, c: Colour) -> Bitboard {
+        let c_pieces = self.pieces[c.idx()];
+        c_pieces[Piece::Queen.idx()]
+            | c_pieces[Piece::Rook.idx()]
+            | c_pieces[Piece::Bishop.idx()]
+            | c_pieces[Piece::Knight.idx()]
+    }
+
     #[inline(always)]
     pub fn can_castle(&self, c: Castling) -> bool {
         self.castling_rights.contains(c)
@@ -863,6 +911,45 @@ mod test {
 
             check_position_correctness(&pos, &start);
         }
+    }
+
+    #[test]
+    fn position_make_null_move_is_correct() {
+        let pos = Position::from_fen("4k3/5n2/8/2Pp3B/1b6/8/3R4/4K3 w - d6 0 1");
+        let mut key = pos.zkey;
+        let mut mut_pos = pos;
+
+        let mut state = StateInfo::new();
+        state.set_from_position(&mut_pos);
+        mut_pos.make_null_move(&mut state);
+
+        // Check null move only changes exactly what is required
+        assert_eq!(mut_pos.ep_square, Square::NONE);
+        assert_eq!(mut_pos.side_to_move, Colour::Black);
+        key.toggle_side();
+        key.toggle_ep_file(Square::D6);
+        assert_eq!(mut_pos.zkey, key);
+        assert_eq!(pos.halfmove_clock + 1, mut_pos.halfmove_clock);
+        assert_eq!(pos.checkers, mut_pos.checkers); // Both positions have no checkers, so both empty
+
+        // Null move leaves everything else unchanged
+        assert_eq!(pos.occupancy, mut_pos.occupancy);
+        assert_eq!(pos.pieces, mut_pos.pieces);
+        assert_eq!(pos.mailbox, mut_pos.mailbox);
+        assert_eq!(pos.castling_rights, mut_pos.castling_rights);
+    }
+
+    #[test]
+    fn position_undo_null_move_is_correct() {
+        let pos = Position::from_fen("4k3/5n2/8/2Pp3B/1b6/8/3R4/4K3 w - d6 0 1");
+        let mut mut_pos = pos;
+
+        let mut state = StateInfo::new();
+        state.set_from_position(&pos);
+        mut_pos.make_null_move(&mut state);
+        mut_pos.undo_null_move(&state);
+
+        assert_eq!(mut_pos, pos);
     }
 
     #[test]

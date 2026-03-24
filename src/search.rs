@@ -531,14 +531,42 @@ fn negamax(
         return q_search(pos, rep_history, ordering, ply, alpha, beta, ctx);
     }
 
+    let in_check = !pos.checkers.is_empty();
+    let mut state = StateInfo::new();
+    state.set_from_position(pos);
+
+    // Perform Null Move Pruning
+    if !in_check && !pos.non_pawn_material(pos.side_to_move).is_empty() && depth >= 3 {
+        let r = 2 + depth / 3;
+        pos.make_null_move(&mut state);
+        rep_history.push(pos.zkey);
+
+        let null_depth = 0.max(depth - r);
+        let v = -negamax(
+            pos,
+            tt,
+            rep_history,
+            ordering,
+            null_depth,
+            ply + 1,
+            -beta,
+            -(beta - 1),
+            ctx,
+        );
+
+        pos.undo_null_move(&state);
+        rep_history.pop();
+
+        if v >= beta {
+            return v;
+        }
+    }
+
     let mut best_score = -INFINITY;
     let mut best_move = Move::NULL;
 
-    let in_check = !pos.checkers.is_empty();
-
     order_moves(pos, ordering, ply as usize, &mut moves, Move::NULL, tt_move);
     for (idx, &mv) in moves.as_slice().iter().enumerate() {
-        let mut state = StateInfo::new();
         pos.make_move(mv, &mut state);
         rep_history.push(pos.zkey);
 
