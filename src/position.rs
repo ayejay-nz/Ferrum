@@ -552,6 +552,15 @@ impl Position {
         false
     }
 
+    #[inline(always)]
+    pub fn captured_piece(&self, mv: Move) -> Option<Piece> {
+        if mv.is_ep_capture() {
+            Some(Piece::Pawn)
+        } else {
+            self.mailbox.piece_at(mv.to())
+        }
+    }
+
     pub fn from_fen(fen: &str) -> Self {
         // 0 - piece placement
         // 1 - side to move
