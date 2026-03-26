@@ -750,7 +750,7 @@ pub fn search(
 
     let mut result = searcher.iterative_deepening(pos, limits.max_depth, start);
 
-    if result.best_move == Move::NULL {
+    if result.best_move.is_null() {
         result.best_move = fallback;
     }
 

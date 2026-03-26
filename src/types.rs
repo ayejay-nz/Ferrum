@@ -548,6 +548,11 @@ impl Move {
     pub fn is_quiet(self) -> bool {
         self.flag() == MoveFlag::Quiet
     }
+
+    #[inline(always)]
+    pub fn is_null(self) -> bool {
+        self == Self::NULL
+    }
 }
 
 impl fmt::Display for Move {
