@@ -436,9 +436,10 @@ impl<'a> Searcher<'a> {
         // - The player doesn't just have pawns left
         // - Search depth is adequite to accidentally skip a zugzwang
         if !in_check && !pos.non_pawn_material(us).is_empty() && depth >= 3 {
-            // Null move reduction
-            let r = 2 + depth / 3;
-            let null_depth = 0.max(depth - r);
+            // Null move reduction with minimum depth set to 1
+            // to prevent it from going straight into q search
+            let r = 3 + depth / 3;
+            let null_depth = 1.max(depth - r);
 
             pos.make_null_move(&mut state);
             self.rep_history.push(pos.zkey);
