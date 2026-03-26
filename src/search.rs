@@ -168,6 +168,11 @@ fn draw_score(ply: i32) -> Eval {
     if ply % 2 == 0 { -CONTEMPT } else { CONTEMPT }
 }
 
+#[inline(always)]
+fn history_bonus(depth: i32) -> i32 {
+    300 * depth - 250
+}
+
 impl OrderingTables {
     pub fn new() -> Self {
         Self {
@@ -188,13 +193,32 @@ impl OrderingTables {
         }
     }
 
-    pub fn update_history(&mut self, mv: Move, depth: i32, side: usize) {
+    #[inline(always)]
+    pub fn update_history(&mut self, mv: Move, side: usize, bonus: i32) {
         let from = mv.from().idx();
         let to = mv.to().idx();
-        let bonus = depth * depth;
-        let weight = self.history[side][from][to] + bonus;
 
-        self.history[side][from][to] = weight.min(MAX_HISTORY);
+        let entry = &mut self.history[side][from][to];
+        let clamped_bonus = bonus.clamp(-MAX_HISTORY, MAX_HISTORY);
+
+        *entry += clamped_bonus - *entry * clamped_bonus.abs() / MAX_HISTORY;
+    }
+
+    /// Give penalty to all previous quiet moves which didn't cause a cutoff
+    pub fn update_quiet_history(
+        &mut self,
+        moves: &[Move],
+        cutoff_idx: usize,
+        side: usize,
+        bonus: i32,
+    ) {
+        for (_, &mv) in moves
+            .iter()
+            .enumerate()
+            .filter(|(i, m)| m.is_quiet() && *i < cutoff_idx)
+        {
+            self.update_history(mv, side, -bonus);
+        }
     }
 
     #[inline(always)]
@@ -513,7 +537,15 @@ impl<'a> Searcher<'a> {
             if score >= beta {
                 if mv.is_quiet() {
                     self.ordering.update_killers(mv, ply as usize);
-                    self.ordering.update_history(mv, depth, us.idx());
+
+                    let bonus = history_bonus(depth);
+                    self.ordering.update_history(mv, us.idx(), bonus);
+                    self.ordering.update_quiet_history(
+                        moves.as_slice(),
+                        move_count,
+                        us.idx(),
+                        bonus / 2,
+                    );
                 }
                 break;
             }
