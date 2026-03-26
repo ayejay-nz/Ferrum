@@ -1,12 +1,10 @@
-use std::{
-    cmp::Reverse,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::{
     book::probe_opening_book,
     evaluate::{Eval, INFINITY, evaluate},
-    movegen::{MoveList, generate_legal, generate_legal_noisy},
+    movegen::{MoveList, generate_legal},
+    movepick::MovePicker,
     position::{Position, StateInfo},
     tt::{BoundType, TranspositionTable},
     types::{Move, Piece},
@@ -93,8 +91,6 @@ pub struct Searcher<'a> {
     ctx: SearchContext,
 }
 
-const PV_BONUS: i32 = 1_000_000;
-const TT_BONUS: i32 = 900_000;
 const CAPTURE_BASE: i32 = 800_000;
 const PROMOTION_BASE: i32 = 700_000;
 const KILLER1_BONUS: i32 = 600_000;
@@ -103,9 +99,10 @@ const KILLER2_BONUS: i32 = 599_000;
 const MAX_PLY: usize = 256;
 const MAX_HISTORY: i32 = 16384;
 
+#[derive(Copy, Clone)]
 pub struct OrderingTables {
-    killers: [[Move; 2]; MAX_PLY],
-    history: [[[i32; 64]; 64]; 2],
+    pub killers: [[Move; 2]; MAX_PLY],
+    pub history: [[[i32; 64]; 64]; 2],
 }
 
 #[inline(always)]
@@ -204,71 +201,39 @@ impl OrderingTables {
         *entry += clamped_bonus - *entry * clamped_bonus.abs() / MAX_HISTORY;
     }
 
-    /// Give penalty to all previous quiet moves which didn't cause a cutoff
-    pub fn update_quiet_history(
-        &mut self,
-        moves: &[Move],
-        cutoff_idx: usize,
-        side: usize,
-        bonus: i32,
-    ) {
-        for (_, &mv) in moves
-            .iter()
-            .enumerate()
-            .filter(|(i, m)| m.is_quiet() && *i < cutoff_idx)
-        {
-            self.update_history(mv, side, -bonus);
+    #[inline(always)]
+    pub fn score_noisy(&self, pos: &Position, mv: Move) -> i32 {
+        let mut score = 0;
+
+        // Score capture moves according to MVV-LVA
+        if let Some(victim) = pos.captured_piece(mv) {
+            let attacker = pos.mailbox.piece_at(mv.from()).unwrap();
+            score += CAPTURE_BASE + 8 * (victim as i32 + 1) - attacker as i32;
         }
+
+        // Score promotions in order of frequency (Q, N, R, B)
+        // Capture promotions go in the capture bucket
+        // Quiet promotions go in the promotion bucket
+        if let Some(promo) = mv.promotion_piece() {
+            if !mv.is_capture() {
+                score += PROMOTION_BASE;
+            }
+
+            score += match promo {
+                Piece::Queen => 40,
+                Piece::Knight => 30,
+                Piece::Rook => 20,
+                Piece::Bishop => 10,
+                _ => unreachable!(),
+            }
+        }
+
+        score
     }
 
     #[inline(always)]
-    fn move_order_score(
-        &self,
-        pos: &Position,
-        ply: usize,
-        mv: Move,
-        pv_move: Move,
-        tt_move: Move,
-    ) -> i32 {
-        // Always want PV move to be first, followed by TT-move
-        if mv == pv_move {
-            return PV_BONUS;
-        }
-        if mv == tt_move {
-            return TT_BONUS;
-        }
-
-        // MVV-LVA move ordering
-        if let Some(victim) = pos.captured_piece(mv) {
-            let attacker = pos.mailbox.piece_at(mv.from()).unwrap();
-            let mut score = CAPTURE_BASE + 8 * (victim as i32 + 1) - attacker as i32;
-
-            if let Some(promo) = mv.promotion_piece() {
-                score += match promo {
-                    Piece::Queen => 40,
-                    Piece::Knight => 30,
-                    Piece::Rook => 20,
-                    Piece::Bishop => 10,
-                    _ => unreachable!(),
-                }
-            }
-
-            return score;
-        }
-
-        // Sort promotions in the order which they most commonly occur
-        if let Some(promo) = mv.promotion_piece() {
-            return PROMOTION_BASE
-                + match promo {
-                    Piece::Queen => 40,
-                    Piece::Knight => 30,
-                    Piece::Rook => 20,
-                    Piece::Bishop => 10,
-                    _ => unreachable!(),
-                };
-        }
-
-        // Sort killers moves
+    pub fn score_quiet(&self, pos: &Position, mv: Move, ply: usize) -> i32 {
+        // Sort killer moves first
         if mv == self.killers[ply][0] {
             return KILLER1_BONUS;
         }
@@ -276,22 +241,18 @@ impl OrderingTables {
             return KILLER2_BONUS;
         }
 
-        // Sort history moves
-        let side = pos.side_to_move.idx();
-        self.history[side][mv.from().idx()][mv.to().idx()]
+        // Score remaining quiet moves by history score
+        let side = pos.side_to_move;
+        return self.history[side.idx()][mv.from().idx()][mv.to().idx()];
     }
 
-    pub fn order_moves(
-        &self,
-        pos: &Position,
-        ply: usize,
-        moves: &mut MoveList,
-        pv_move: Move,
-        tt_move: Move,
-    ) {
-        moves.as_mut_slice().sort_unstable_by_key(|&mv| {
-            Reverse(self.move_order_score(pos, ply, mv, pv_move, tt_move))
-        });
+    #[inline(always)]
+    pub fn score_evasion(&self, pos: &Position, mv: Move, ply: usize) -> i32 {
+        if mv.is_capture() || mv.is_promotion() {
+            self.score_noisy(pos, mv)
+        } else {
+            self.score_quiet(pos, mv, ply)
+        }
     }
 }
 
@@ -331,37 +292,38 @@ impl<'a> Searcher<'a> {
         state.set_from_position(pos);
 
         let mut best_score;
-        let mut moves;
 
-        // If we are in check, we cannot standpat and instead must search all evasions.
+        // If we are in check, we cannot stand pat and instead must search all evasions.
         // If we are not in check, we search all capturing moves, returning if we get
         // a beta cutoff or have searched all moves (i.e. reached a quiet position)
         if in_check {
-            moves = generate_legal(pos, &mut MoveList::new());
-
-            if moves.is_empty() {
-                return -INFINITY + ply;
-            }
-
             best_score = -INFINITY;
         } else {
-            let stand_pat = evaluate(pos);
+            // Stand pat
+            best_score = evaluate(pos);
 
-            if stand_pat >= beta {
-                return stand_pat;
+            if best_score >= beta {
+                return best_score;
             }
 
-            alpha = alpha.max(stand_pat);
-            best_score = stand_pat;
-
-            moves = generate_legal_noisy(pos, &mut MoveList::new());
+            alpha = alpha.max(best_score);
         }
 
-        self.ordering
-            .order_moves(pos, ply as usize, &mut moves, Move::NULL, Move::NULL);
+        let mut mp = MovePicker::new(in_check, Move::NULL, Move::NULL, 0, ply as usize);
+        let mut move_count = 0;
 
         // Search through all moves until a beta cutoff or none left
-        for &mv in moves.as_slice() {
+        while let Some(mv) = mp.next(pos, &self.ordering) {
+            if !pos.is_legal(mv) {
+                continue;
+            }
+
+            // Allow all legal evasions when in check, but
+            // only allow tactical moves when in check
+            if !in_check && !(mv.is_capture() || mv.is_promotion()) {
+                continue;
+            }
+
             pos.make_move(mv, &mut state);
             self.rep_history.push(pos.zkey);
 
@@ -370,12 +332,19 @@ impl<'a> Searcher<'a> {
             pos.undo_move(mv, &state);
             self.rep_history.pop();
 
+            move_count += 1;
+
             if score >= beta {
                 return score;
             }
 
             best_score = best_score.max(score);
             alpha = alpha.max(score);
+        }
+
+        // Handle checkmate
+        if move_count == 0 && in_check {
+            return -INFINITY + ply;
         }
 
         best_score
@@ -437,18 +406,6 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // Generate legal moves
-        let mut moves = generate_legal(pos, &mut MoveList::new());
-
-        // Handle checkmate/stalemate
-        if moves.is_empty() {
-            if pos.checkers.is_empty() {
-                return 0; // stalemate
-            } else {
-                return -INFINITY + ply; // checkmate
-            }
-        }
-
         let in_check = !pos.checkers.is_empty();
         let is_pv_node = node_type.is_pv();
 
@@ -479,14 +436,18 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        self.ordering
-            .order_moves(pos, ply as usize, &mut moves, Move::NULL, tt_move);
-
         let mut best_score = -INFINITY;
         let mut best_move = Move::NULL;
 
-        // Iterate over all ordered legal moves until beta cutoff or none left
-        for (idx, &mv) in moves.as_slice().iter().enumerate() {
+        let mut mp = MovePicker::new(in_check, Move::NULL, tt_move, depth, ply as usize);
+        let mut move_count = 0;
+
+        // Iterate over all pseudo-legal moves until beta cutoff or none left
+        while let Some(mv) = mp.next(pos, &self.ordering) {
+            if !pos.is_legal(mv) {
+                continue;
+            }
+
             pos.make_move(mv, &mut state);
             self.rep_history.push(pos.zkey);
 
@@ -497,8 +458,8 @@ impl<'a> Searcher<'a> {
             let nw_beta = -alpha;
 
             // Perform LMR and PVS
-            if can_lmr(pos, &self.ordering.killers, mv, in_check, depth, ply) && idx > 0 {
-                let r = lmr_reduction(idx);
+            if can_lmr(pos, &self.ordering.killers, mv, in_check, depth, ply) && move_count > 0 {
+                let r = lmr_reduction(move_count);
                 let d = new_depth - r;
 
                 // Search using null window at reduced depth
@@ -512,7 +473,7 @@ impl<'a> Searcher<'a> {
                 }
             }
             // Perform a full depth search on null window when LMR is skipped
-            else if !is_pv_node || idx > 0 {
+            else if !is_pv_node || move_count > 0 {
                 score = -self.negamax(pos, new_depth, ply + 1, nw_alpha, nw_beta, NodeType::NonPV);
             }
 
@@ -520,12 +481,14 @@ impl<'a> Searcher<'a> {
             // The first move always get full depth as that is PV move from ordering
             // If a later move raised alpha without causing a beta cutoff,
             // we are also interested in searching full depth
-            if is_pv_node && (idx == 0 || (alpha < score && score < beta)) {
+            if is_pv_node && (move_count == 0 || (alpha < score && score < beta)) {
                 score = -self.negamax(pos, new_depth, ply + 1, -beta, -alpha, NodeType::PV);
             }
 
             pos.undo_move(mv, &state);
             self.rep_history.pop();
+
+            move_count += 1;
 
             if score > best_score {
                 best_score = score;
@@ -537,17 +500,26 @@ impl<'a> Searcher<'a> {
             if score >= beta {
                 if mv.is_quiet() {
                     self.ordering.update_killers(mv, ply as usize);
-
-                    let bonus = history_bonus(depth);
-                    self.ordering.update_history(mv, us.idx(), bonus);
-                    self.ordering.update_quiet_history(
-                        moves.as_slice(),
-                        move_count,
-                        us.idx(),
-                        bonus / 2,
-                    );
+                    self.ordering
+                        .update_history(mv, us.idx(), history_bonus(depth));
                 }
                 break;
+            }
+
+            // If a quiet move didn't cause a beta cutoff,
+            // apply a penalty to its history score
+            if mv.is_quiet() {
+                self.ordering
+                    .update_history(mv, us.idx(), -history_bonus(depth) / 2)
+            }
+        }
+
+        // Handle checkmate/stalemate
+        if move_count == 0 {
+            if pos.checkers.is_empty() {
+                return 0; // stalemate
+            } else {
+                return -INFINITY + ply; // checkmate
             }
         }
 
@@ -581,21 +553,6 @@ impl<'a> Searcher<'a> {
     }
 
     fn search_root(&mut self, pos: &mut Position, pv_move: Move, depth: i32) -> SearchResult {
-        let mut moves = generate_legal(pos, &mut MoveList::new());
-
-        // Check for mates
-        if moves.is_empty() {
-            return SearchResult {
-                best_move: Move::NULL,
-                score: if pos.checkers.is_empty() {
-                    0
-                } else {
-                    -INFINITY
-                },
-                depth,
-            };
-        }
-
         // Initialise search information
         let mut best_score = -INFINITY;
         let mut best_move = Move::NULL;
@@ -625,11 +582,17 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        self.ordering
-            .order_moves(pos, 0, &mut moves, pv_move, tt_move);
+        let in_check = !pos.checkers.is_empty();
         let mut state = StateInfo::new();
 
-        for &mv in moves.as_slice() {
+        let mut mp = MovePicker::new(in_check, pv_move, tt_move, depth, 0);
+        let mut move_count = 0;
+
+        while let Some(mv) = mp.next(pos, &self.ordering) {
+            if !pos.is_legal(mv) {
+                continue;
+            }
+
             pos.make_move(mv, &mut state);
             self.rep_history.push(pos.zkey);
 
@@ -638,12 +601,27 @@ impl<'a> Searcher<'a> {
             pos.undo_move(mv, &state);
             self.rep_history.pop();
 
+            move_count += 1;
+
             if score > best_score {
                 best_score = score;
                 best_move = mv;
             }
 
             alpha = alpha.max(score);
+        }
+
+        // Handle mates
+        if move_count == 0 {
+            return SearchResult {
+                best_move: Move::NULL,
+                score: if pos.checkers.is_empty() {
+                    0
+                } else {
+                    -INFINITY
+                },
+                depth,
+            };
         }
 
         // Store values in transposition table

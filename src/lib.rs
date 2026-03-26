@@ -2,6 +2,7 @@ pub mod bitboard;
 pub mod book;
 pub mod evaluate;
 pub mod movegen;
+pub mod movepick;
 pub mod position;
 pub mod search;
 pub mod tt;
