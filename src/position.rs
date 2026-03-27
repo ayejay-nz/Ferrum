@@ -1,6 +1,6 @@
 use crate::{
     bitboard::{Bitboard, bitboards},
-    types::{Castling, Colour, Direction, Mailbox, Move, Piece, PieceCode, Square},
+    types::{Castling, CastlingType, Colour, Direction, Mailbox, Move, Piece, PieceCode, Square},
     zobrist::{ZKey, ep_hashable},
 };
 
@@ -440,6 +440,109 @@ impl Position {
             || !(bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()]).is_empty();
     }
 
+    /// A function to check if a move is pseudo-legal in a given position. \
+    /// Asumes the move's piece geometry/flag combination is valid, and only validates
+    /// position-dependent constraints (occupancy, EP, castling rights, blockers, etc)
+    #[inline(always)]
+    pub fn is_pseudo_legal(&self, mv: Move) -> bool {
+        let bbs = bitboards();
+
+        let us = self.side_to_move;
+        let them = us.opposite();
+        let from = mv.from();
+        let to = mv.to();
+
+        let opp_occ = self.occupancy[them.idx()];
+        let all_occ = self.occupancy[2];
+
+        // Check the moving piece actually exists
+        let Some(piece) = self.mailbox.piece_at(from) else {
+            return false;
+        };
+
+        // Check the moving piece is the correct side
+        if (self.occupancy[us.idx()] & from.bitboard()).is_empty() {
+            return false;
+        }
+
+        // 'to' square cannot be occupied by a friendly piece
+        if !(self.occupancy[us.idx()] & to.bitboard()).is_empty() {
+            return false;
+        }
+
+        // If the move is a capture, 'to' square much be occupied by an enemy
+        // We skip pawns here as en passant doesn't follow this behaviour.
+        // Similarly, a non-capture shouldn't land on an enemy piece
+        if piece != Piece::Pawn {
+            if mv.is_capture() && (to.bitboard() & opp_occ).is_empty() {
+                return false;
+            }
+            if !mv.is_capture() && !(to.bitboard() & opp_occ).is_empty() {
+                return false;
+            }
+        }
+
+        match piece {
+            Piece::Pawn => {
+                if mv.is_ep_capture() {
+                    return to == self.ep_square;
+                }
+
+                if mv.is_capture() {
+                    return !(to.bitboard() & opp_occ).is_empty();
+                }
+
+                // Regular non-capturing promotion
+                if mv.is_promotion() {
+                    return (to.bitboard() & opp_occ).is_empty();
+                }
+
+                if mv.is_double_push() {
+                    let middle = Square::new((to.u8() + from.u8()) >> 1);
+                    return ((middle.bitboard() | to.bitboard()) & all_occ).is_empty();
+                }
+
+                // Single push
+                return (to.bitboard() & opp_occ).is_empty();
+            }
+            Piece::Knight => {
+                return !(bbs.knight_attacks(from) & to.bitboard()).is_empty();
+            }
+            Piece::Bishop => {
+                let attack = bbs.bishop_attacks(from, all_occ);
+                return !(attack & to.bitboard()).is_empty();
+            }
+            Piece::Rook => {
+                let attack = bbs.rook_attacks(from, all_occ);
+                return !(attack & to.bitboard()).is_empty();
+            }
+            Piece::Queen => {
+                let attack = bbs.bishop_attacks(from, all_occ) | bbs.rook_attacks(from, all_occ);
+                return !(attack & to.bitboard()).is_empty();
+            }
+            Piece::King => {
+                let in_check = !self.checkers.is_empty();
+
+                if let Some(castle_type) = mv.castle_type() {
+                    if in_check {
+                        return false;
+                    }
+
+                    let castling_flag = match (us, castle_type) {
+                        (Colour::White, CastlingType::Kingside) => Castling::WHITE_OO,
+                        (Colour::White, CastlingType::Queenside) => Castling::WHITE_OOO,
+                        (Colour::Black, CastlingType::Kingside) => Castling::BLACK_OO,
+                        (Colour::Black, CastlingType::Queenside) => Castling::BLACK_OOO,
+                    };
+
+                    return self.can_castle(castling_flag) && !self.castling_impeded(castling_flag);
+                }
+
+                true
+            }
+        }
+    }
+
     /// Check if a pseudo-legal move is legal or not \
     /// Only checks if the king is in check after the move, not before
     #[inline(always)]
@@ -679,7 +782,10 @@ impl Position {
 
 #[cfg(test)]
 mod test {
-    use crate::types::MoveFlag;
+    use crate::{
+        movegen::{MoveList, generate_all, generate_evasions},
+        types::MoveFlag,
+    };
 
     use super::*;
 
@@ -989,6 +1095,137 @@ mod test {
         assert_eq!(pos.castling_impeded(Castling::WHITE_OOO), false);
         assert_eq!(pos.castling_impeded(Castling::BLACK_OO), false);
         assert_eq!(pos.castling_impeded(Castling::BLACK_OOO), false);
+    }
+
+    #[test]
+    fn is_pseudo_legal_move_is_consistent() {
+        let pos = Position::default();
+        let mut moves = MoveList::new();
+        generate_all(&pos, &mut moves);
+
+        // Check all pseudo-legal moves pass
+        for &mv in moves.as_slice() {
+            assert!(pos.is_pseudo_legal(mv));
+        }
+
+        // Correctly classes evasion moves
+        let pos =
+            Position::from_fen("rnbqk1nr/ppp2ppp/4p3/3p4/2PP4/2b2N2/PP2P1PP/R1BQKB1R w KQkq - 0 1");
+        generate_evasions(&pos, &mut moves);
+
+        let mut count = 0;
+        for &mv in moves.as_slice() {
+            assert!(pos.is_pseudo_legal(mv));
+            count += 1;
+        }
+
+        assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn is_pseudo_legal_on_pawn_moves() {
+        // Correct singe/double push filtering
+        let pos =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/P1p5/1P1p4/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        let valid1 = Move::new(Square::A2, Square::A3, MoveFlag::Quiet);
+        let valid2 = Move::new(Square::C2, Square::C3, MoveFlag::Quiet);
+        let valid3 = Move::new(Square::E2, Square::E3, MoveFlag::Quiet);
+        let valid4 = Move::new(Square::E2, Square::E4, MoveFlag::DoublePush);
+        let blocked1 = Move::new(Square::A2, Square::A4, MoveFlag::DoublePush);
+        let blocked2 = Move::new(Square::B2, Square::B4, MoveFlag::DoublePush);
+        let blocked3 = Move::new(Square::C2, Square::C4, MoveFlag::DoublePush);
+        let blocked4 = Move::new(Square::D2, Square::D4, MoveFlag::DoublePush);
+        let blocked5 = Move::new(Square::B2, Square::B3, MoveFlag::Quiet);
+        let blocked6 = Move::new(Square::D2, Square::D3, MoveFlag::Quiet);
+
+        assert!(pos.is_pseudo_legal(valid1));
+        assert!(pos.is_pseudo_legal(valid2));
+        assert!(pos.is_pseudo_legal(valid3));
+        assert!(pos.is_pseudo_legal(valid4));
+        assert_eq!(pos.is_pseudo_legal(blocked1), false);
+        assert_eq!(pos.is_pseudo_legal(blocked2), false);
+        assert_eq!(pos.is_pseudo_legal(blocked3), false);
+        assert_eq!(pos.is_pseudo_legal(blocked4), false);
+        assert_eq!(pos.is_pseudo_legal(blocked5), false);
+        assert_eq!(pos.is_pseudo_legal(blocked6), false);
+
+        // Correctly validates en passant moves
+        let pos =
+            Position::from_fen("rnbqkbnr/1p2pppp/p7/1PppP3/8/8/PPPPPPPP/RNBQKBNR w KQkq d6 0 1");
+        let valid_ep = Move::new(Square::E5, Square::D6, MoveFlag::EpCapture);
+        let invalid_ep1 = Move::new(Square::B5, Square::C6, MoveFlag::EpCapture);
+        let invalid_ep2 = Move::new(Square::B5, Square::A6, MoveFlag::EpCapture);
+
+        assert!(pos.is_pseudo_legal(valid_ep));
+        assert_eq!(pos.is_pseudo_legal(invalid_ep1), false);
+        assert_eq!(pos.is_pseudo_legal(invalid_ep2), false);
+    }
+
+    #[test]
+    fn is_pseudo_legal_on_sliders() {
+        // Test blocked vs open bishop diagonals
+        let open = Position::from_fen("3k4/8/8/8/8/3B4/8/3K4 w - - 0 1");
+        let blocked = Position::from_fen("3k4/8/6p1/1P6/8/3B4/8/3K4 w - - 0 1");
+
+        let blocked1 = Move::new(Square::D3, Square::A6, MoveFlag::Quiet);
+        let blocked2 = Move::new(Square::D3, Square::B5, MoveFlag::Quiet);
+        let blocked3 = Move::new(Square::D3, Square::H7, MoveFlag::Quiet);
+        let capture1 = Move::new(Square::D3, Square::G6, MoveFlag::Capture);
+
+        assert!(open.is_pseudo_legal(blocked1));
+        assert!(open.is_pseudo_legal(blocked2));
+        assert!(open.is_pseudo_legal(blocked3));
+        assert!(!open.is_pseudo_legal(capture1)); // Capture invalid
+
+        assert!(!blocked.is_pseudo_legal(blocked1));
+        assert!(!blocked.is_pseudo_legal(blocked2));
+        assert!(!blocked.is_pseudo_legal(blocked3));
+        assert!(blocked.is_pseudo_legal(capture1)); // Capture valid
+
+        // Test blocked vs open rook file/ranks
+        let open = Position::from_fen("3k4/8/8/8/4R3/8/8/3K4 w - - 0 1");
+        let blocked = Position::from_fen("3k4/8/4p3/8/4R1P1/8/8/3K4 w - - 0 1");
+
+        let blocked1 = Move::new(Square::E4, Square::G4, MoveFlag::Quiet);
+        let blocked2 = Move::new(Square::E4, Square::H4, MoveFlag::Quiet);
+        let blocked3 = Move::new(Square::E4, Square::E7, MoveFlag::Quiet);
+        let capture1 = Move::new(Square::E4, Square::E6, MoveFlag::Capture);
+
+        assert!(open.is_pseudo_legal(blocked1));
+        assert!(open.is_pseudo_legal(blocked2));
+        assert!(open.is_pseudo_legal(blocked3));
+        assert!(!open.is_pseudo_legal(capture1)); // Capture invalid
+
+        assert!(!blocked.is_pseudo_legal(blocked1));
+        assert!(!blocked.is_pseudo_legal(blocked2));
+        assert!(!blocked.is_pseudo_legal(blocked3));
+        assert!(blocked.is_pseudo_legal(capture1)); // Capture valid
+    }
+
+    #[test]
+    fn is_pseudo_legal_castling() {
+        let pos = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
+
+        // Allows legal castles
+        let white_oo = Move::new(Square::E1, Square::G1, MoveFlag::KingCastle);
+        let white_ooo = Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle);
+
+        assert!(pos.is_pseudo_legal(white_oo));
+        assert!(pos.is_pseudo_legal(white_ooo));
+
+        // Disallow castles when rights are missing, path blocked, or in check
+        let mut pos = Position::from_fen("r3k2r/pppp1ppp/8/8/8/4R3/PPPPPPPP/RN2K2R w Qkq - 0 1");
+        let mut state = StateInfo::new();
+        let no_rights = Move::new(Square::E1, Square::G1, MoveFlag::KingCastle);
+        let blocked = Move::new(Square::E1, Square::C1, MoveFlag::QueenCastle);
+        let in_check1 = Move::new(Square::E8, Square::G8, MoveFlag::KingCastle);
+        let in_check2 = Move::new(Square::E8, Square::C8, MoveFlag::QueenCastle);
+
+        assert_eq!(pos.is_pseudo_legal(no_rights), false);
+        assert_eq!(pos.is_pseudo_legal(blocked), false);
+        pos.make_null_move(&mut state);
+        assert_eq!(pos.is_pseudo_legal(in_check1), false);
+        assert_eq!(pos.is_pseudo_legal(in_check2), false);
     }
 
     #[test]
