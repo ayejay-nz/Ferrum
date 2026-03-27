@@ -440,9 +440,14 @@ impl Position {
             || !(bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()]).is_empty();
     }
 
-    /// A function to check if a move is pseudo-legal in a given position. \
-    /// Asumes the move's piece geometry/flag combination is valid, and only validates
-    /// position-dependent constraints (occupancy, EP, castling rights, blockers, etc)
+    /// Checks if a move is pseudo-legal in the current position. 
+    /// 
+    /// This is used to validate singleton search moves such as PV, TT, 
+    /// and killer moves before they bypass normal move generation.
+    ///
+    /// The move is not assumed to have come from the current position, so we
+    /// check piece ownership, occupancy constraints, and piece-specific move 
+    /// geometry, but it does not check whether the move leaves the king in check.
     #[inline(always)]
     pub fn is_pseudo_legal(&self, mv: Move) -> bool {
         let bbs = bitboards();
@@ -489,7 +494,7 @@ impl Position {
                 }
 
                 if mv.is_capture() {
-                    return !(to.bitboard() & opp_occ).is_empty();
+                    return !(bbs.pawn_attacks(from, us) & to.bitboard() & opp_occ).is_empty();
                 }
 
                 // Regular non-capturing promotion
@@ -503,7 +508,10 @@ impl Position {
                 }
 
                 // Single push
-                return (to.bitboard() & opp_occ).is_empty();
+                let delta = to.u8() as i32 - from.u8() as i32;
+                let expected_delta = if us == Colour::White { 8 } else { -8 };
+
+                return (to.bitboard() & opp_occ).is_empty() && delta == expected_delta;
             }
             Piece::Knight => {
                 return !(bbs.knight_attacks(from) & to.bitboard()).is_empty();
@@ -538,7 +546,8 @@ impl Position {
                     return self.can_castle(castling_flag) && !self.castling_impeded(castling_flag);
                 }
 
-                true
+                let mask = bbs.king_attacks(from);
+                return !(to.bitboard() & mask).is_empty();
             }
         }
     }
