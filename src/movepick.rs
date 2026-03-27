@@ -110,7 +110,7 @@ impl MovePicker {
                 self.stage.next();
                 self.idx = 0;
 
-                if self.pv_move.is_null() {
+                if self.pv_move.is_null() || !pos.is_pseudo_legal(self.pv_move) {
                     return self.next(pos, ordering);
                 }
 
@@ -122,7 +122,10 @@ impl MovePicker {
                 self.stage.next();
                 self.idx = 0;
 
-                if self.tt_move.is_null() || self.tt_move == self.pv_move {
+                if self.tt_move.is_null()
+                    || self.tt_move == self.pv_move
+                    || !pos.is_pseudo_legal(self.tt_move)
+                {
                     return self.next(pos, ordering);
                 }
 
