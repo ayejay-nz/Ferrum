@@ -14,6 +14,7 @@ enum Stage {
     TTMove,
     GenNoisy,
     Noisy,
+    Killers,
     GenQuiets,
     Quiets,
 
@@ -38,7 +39,8 @@ impl Stage {
             Self::PVMove => Self::TTMove,
             Self::TTMove => Self::GenNoisy,
             Self::GenNoisy => Self::Noisy,
-            Self::Noisy => Self::GenQuiets,
+            Self::Noisy => Self::Killers,
+            Self::Killers => Self::GenQuiets,
             Self::GenQuiets => Self::Quiets,
             Self::Quiets => Self::Done,
 
@@ -158,6 +160,25 @@ impl MovePicker {
                 self.idx = 0;
                 return self.next(pos, ordering);
             }
+            Stage::Killers => {
+                while self.idx < 2 {
+                    let mv = ordering.killers[self.ply][self.idx];
+                    self.idx += 1;
+
+                    if mv.is_null() || mv == self.tt_move || mv == self.pv_move {
+                        continue;
+                    }
+                    if !pos.is_pseudo_legal(mv) {
+                        continue;
+                    }
+
+                    return Some(mv);
+                }
+
+                self.idx = 0;
+                self.stage.next();
+                self.next(pos, ordering)
+            }
             Stage::GenQuiets => {
                 self.stage.next();
                 generate_quiets(pos, &mut self.moves);
@@ -172,7 +193,10 @@ impl MovePicker {
                     let mv = self.moves.as_slice()[self.idx];
                     self.idx += 1;
 
-                    if mv == self.tt_move || mv == self.pv_move {
+                    let k1 = ordering.killers[self.ply][0];
+                    let k2 = ordering.killers[self.ply][1];
+
+                    if mv == self.tt_move || mv == self.pv_move || mv == k1 || mv == k2 {
                         continue;
                     }
 
@@ -257,6 +281,8 @@ mod tests {
         stage.next();
         assert_eq!(stage, Stage::Noisy);
         stage.next();
+        assert_eq!(stage, Stage::Killers);
+        stage.next();
         assert_eq!(stage, Stage::GenQuiets);
         stage.next();
         assert_eq!(stage, Stage::Quiets);
@@ -319,7 +345,7 @@ mod tests {
         // Correctly gets killers
         assert_eq!(mp.next(&pos, &ordering).unwrap(), k1);
 
-        assert_eq!(mp.stage, Stage::Quiets);
+        assert_eq!(mp.stage, Stage::Killers);
         assert_eq!(mp.idx, 1);
 
         // Correct gets remaining quiets

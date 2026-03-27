@@ -440,13 +440,13 @@ impl Position {
             || !(bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()]).is_empty();
     }
 
-    /// Checks if a move is pseudo-legal in the current position. 
-    /// 
-    /// This is used to validate singleton search moves such as PV, TT, 
+    /// Checks if a move is pseudo-legal in the current position.
+    ///
+    /// This is used to validate singleton search moves such as PV, TT,
     /// and killer moves before they bypass normal move generation.
     ///
     /// The move is not assumed to have come from the current position, so we
-    /// check piece ownership, occupancy constraints, and piece-specific move 
+    /// check piece ownership, occupancy constraints, and piece-specific move
     /// geometry, but it does not check whether the move leaves the king in check.
     #[inline(always)]
     pub fn is_pseudo_legal(&self, mv: Move) -> bool {
