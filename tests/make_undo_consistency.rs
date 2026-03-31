@@ -1,5 +1,5 @@
-use rust_engine::position::{DEFAULT_FEN, Position, StateInfo};
-use rust_engine::types::{Move, MoveFlag, Square};
+use ferrum::position::{DEFAULT_FEN, Position, StateInfo};
+use ferrum::types::{Move, MoveFlag, Square};
 
 #[test]
 fn make_undo_move_loop() {

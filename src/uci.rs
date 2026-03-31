@@ -194,7 +194,7 @@ pub fn run() {
         let line = line.unwrap();
 
         if line == "uci" {
-            println!("id name rust_engine");
+            println!("id name ferrum");
             println!("id author ayejay");
             println!("option name UseBook type check default true");
             println!("uciok");

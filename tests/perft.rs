@@ -1,4 +1,4 @@
-use rust_engine::{
+use ferrum::{
     movegen::{MoveList, generate_legal},
     position::{Position, StateInfo},
 };

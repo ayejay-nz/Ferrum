@@ -1,4 +1,4 @@
-use rust_engine::uci;
+use ferrum::uci;
 
 fn main() {
     uci::run();
