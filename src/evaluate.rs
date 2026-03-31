@@ -175,6 +175,19 @@ const EG_PST: [PST; 6] = [
 
 const PHASE_WEIGHTS: [i32; 6] = [0, 1, 1, 2, 4, 0];
 
+#[derive(Copy, Clone, Default)]
+struct Score {
+    mg: Eval,
+    eg: Eval,
+}
+
+impl Score {
+    fn add(&mut self, sign: Eval, mg: Eval, eg: Eval) {
+        self.mg += sign * mg;
+        self.eg += sign * eg;
+    }
+}
+
 #[inline(always)]
 const fn piece_values(piece: Piece) -> PieceValues {
     PIECE_VALUES[piece.idx()]
@@ -193,12 +206,8 @@ const fn relative_square(colour: Colour, sq: Square) -> usize {
     }
 }
 
-pub fn evaluate(pos: &Position) -> Eval {
-    let us = pos.side_to_move;
-
-    let mut mg_eval = 0;
-    let mut eg_eval = 0;
-    let mut game_phase = 0i32;
+fn eval_material_pst(pos: &Position, score: &mut Score) -> i32 {
+    let mut phase = 0;
 
     for colour in [Colour::White, Colour::Black] {
         let sign = if colour == Colour::White { 1 } else { -1 };
@@ -218,18 +227,30 @@ pub fn evaluate(pos: &Position) -> Eval {
                 let lsb = bb.pop_lsb();
                 let sq = relative_square(colour, lsb);
 
-                mg_eval += sign * (values.mg + MG_PST[piece.idx()][sq]);
-                eg_eval += sign * (values.eg + EG_PST[piece.idx()][sq]);
-                game_phase += phase_weight(piece);
+                score.mg += sign * (values.mg + MG_PST[piece.idx()][sq]);
+                score.eg += sign * (values.eg + EG_PST[piece.idx()][sq]);
+
+                phase += phase_weight(piece);
             }
         }
     }
 
-    // Taper the evaluation
-    let mg_phase = game_phase.min(24);
+    phase
+}
+
+fn taper(score: Score, phase: i32, us: Colour) -> Eval {
+    let mg_phase = phase.min(24);
     let eg_phase = 24 - mg_phase;
 
-    let score = (mg_phase * mg_eval + eg_phase * eg_eval) / 24;
+    let score = (mg_phase * score.mg + eg_phase * score.eg) / 24;
 
     if us == Colour::White { score } else { -score }
+}
+
+pub fn evaluate(pos: &Position) -> Eval {
+    let mut score = Score::default();
+
+    let phase = eval_material_pst(pos, &mut score);
+
+    taper(score, phase, pos.side_to_move)
 }
