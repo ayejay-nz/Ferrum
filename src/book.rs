@@ -12,10 +12,17 @@ use crate::{
 
 const ENTRY_SIZE: u64 = 16;
 
-fn book_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../books")
-        .join("Cerebellum3Merge.bin")
+fn open_book() -> Option<File> {
+    let books_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("books");
+
+    for book_name in ["Cerebellum3Merge.bin", "gm2001.bin"] {
+        let path = books_dir.join(book_name);
+        if let Ok(file) = File::open(path) {
+            return Some(file);
+        }
+    }
+
+    None
 }
 
 fn promo_piece(code: u16) -> Option<Option<Piece>> {
@@ -52,8 +59,7 @@ fn decode_book_move(book_move: u16) -> Option<(Square, Square, Option<Piece>)> {
 }
 
 pub fn probe_opening_book(pos: &Position) -> Option<Move> {
-    let path = book_path();
-    let mut file = File::open(path).ok()?;
+    let mut file = open_book()?;
 
     let key = pos.zkey.0;
     let n_entries = file.metadata().ok()?.len() / ENTRY_SIZE;
