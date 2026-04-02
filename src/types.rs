@@ -278,6 +278,25 @@ impl PieceCode {
 
         return Some(PieceCode::new(colour, piece));
     }
+
+    pub fn to_char(self) -> char {
+        debug_assert!(!self.is_empty());
+
+        let piece = match self.piece().unwrap() {
+            Piece::Pawn => 'p',
+            Piece::Knight => 'n',
+            Piece::Bishop => 'b',
+            Piece::Rook => 'r',
+            Piece::Queen => 'q',
+            Piece::King => 'k',
+        };
+
+        if self.colour().unwrap() == Colour::White {
+            piece.to_ascii_uppercase()
+        } else {
+            piece
+        }
+    }
 }
 
 // --- Mailbox ---
@@ -673,6 +692,14 @@ mod tests {
         let black_king = PieceCode::from_char('k');
         assert_eq!(white_pawn, Some(PieceCode::new(Colour::White, Piece::Pawn)));
         assert_eq!(black_king, Some(PieceCode::new(Colour::Black, Piece::King)));
+    }
+
+    #[test]
+    fn piece_code_to_char_is_correct() {
+        let white_pawn = PieceCode::from_char('P').unwrap();
+        let black_queen = PieceCode::from_char('q').unwrap();
+        assert_eq!(white_pawn.to_char(), 'P');
+        assert_eq!(black_queen.to_char(), 'q');
     }
 
     // --- Mailbox ---
