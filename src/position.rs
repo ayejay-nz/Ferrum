@@ -487,6 +487,12 @@ impl Position {
             }
         }
 
+        // These flagscan only be set by a pawn move
+        if piece != Piece::Pawn && (mv.is_promotion() || mv.is_double_push() || mv.is_ep_capture())
+        {
+            return false;
+        }
+
         match piece {
             Piece::Pawn => {
                 if mv.is_ep_capture() {
@@ -494,6 +500,13 @@ impl Position {
                 }
 
                 if mv.is_capture() {
+                    // If a move is a capture onto the promotion rank,
+                    // check that the promotion flag is set
+                    let rank = to.rank();
+                    if (rank == 0 || rank == 7) && !mv.is_promotion() {
+                        return false;
+                    }
+
                     return !(bbs.pawn_attacks(from, us) & to.bitboard() & opp_occ).is_empty();
                 }
 
@@ -507,7 +520,13 @@ impl Position {
                     return ((middle.bitboard() | to.bitboard()) & all_occ).is_empty();
                 }
 
-                // Single push
+                // Ensure move is not moving the pawn to the promotion rank
+                let rank = to.rank();
+                if rank == 0 || rank == 7 {
+                    return false;
+                }
+
+                // Ensure move is a single push
                 let delta = to.u8() as i32 - from.u8() as i32;
                 let expected_delta = if us == Colour::White { 8 } else { -8 };
 
