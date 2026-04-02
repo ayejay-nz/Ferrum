@@ -278,6 +278,25 @@ impl PieceCode {
 
         return Some(PieceCode::new(colour, piece));
     }
+
+    pub fn to_char(self) -> char {
+        debug_assert!(!self.is_empty());
+
+        let piece = match self.piece().unwrap() {
+            Piece::Pawn => 'p',
+            Piece::Knight => 'n',
+            Piece::Bishop => 'b',
+            Piece::Rook => 'r',
+            Piece::Queen => 'q',
+            Piece::King => 'k',
+        };
+
+        if self.colour().unwrap() == Colour::White {
+            piece.to_ascii_uppercase()
+        } else {
+            piece
+        }
+    }
 }
 
 // --- Mailbox ---

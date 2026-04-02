@@ -772,6 +772,88 @@ impl Position {
         return position;
     }
 
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::from("");
+
+        // Piece placement
+        for rank in (0..8).rev() {
+            let mut empty_run = 0;
+
+            for file in 0..8 {
+                let sq = Square::from_coords(rank, file);
+                let pc = self.mailbox.piece_code_at(sq);
+
+                if pc.is_empty() {
+                    empty_run += 1;
+
+                    // Add empty run if we're on last file
+                    if file == 7 {
+                        fen = format!("{fen}{empty_run}");
+                        empty_run = 0;
+                    }
+                    continue;
+                }
+
+                // Empty run has come to an end, so add to FEN before adding piece
+                if empty_run > 0 {
+                    fen = format!("{fen}{empty_run}");
+                    empty_run = 0;
+                }
+
+                // Add piece to FEN
+                fen = format!("{fen}{}", pc.to_char());
+            }
+
+            if rank != 0 {
+                fen = format!("{fen}/")
+            }
+        }
+
+        // Active colour
+        let stm = if self.side_to_move == Colour::White {
+            'w'
+        } else {
+            'b'
+        };
+        fen = format!("{fen} {stm}");
+
+        // Castling rights
+        let mut rights = String::with_capacity(4);
+        if self.castling_rights == Castling::NONE {
+            rights = String::from("-");
+        } else {
+            if self.castling_rights.can_white_ks() {
+                rights = format!("{rights}K");
+            }
+            if self.castling_rights.can_white_qs() {
+                rights = format!("{rights}Q");
+            }
+            if self.castling_rights.can_black_ks() {
+                rights = format!("{rights}k");
+            }
+            if self.castling_rights.can_black_qs() {
+                rights = format!("{rights}q");
+            }
+        }
+
+        fen = format!("{fen} {rights}");
+
+        // En passant
+        if self.ep_square.is_none() {
+            fen = format!("{fen} -");
+        } else {
+            let rank = self.ep_square.rank() + b'1';
+            let file = self.ep_square.file() + b'a';
+            let ep = format!("{}{}", file as char, rank as char);
+            fen = format!("{fen} {ep}");
+        }
+
+        fen = format!("{fen} {}", self.halfmove_clock);
+        fen = format!("{fen} {}", self.fullmove_counter);
+
+        fen
+    }
+
     pub fn default() -> Self {
         Self::from_fen(DEFAULT_FEN)
     }
@@ -1387,5 +1469,33 @@ mod test {
         let pos2 = Position::from_fen("3k4/4b3/5b2/8/8/8/8/3K4 w - - 0 1");
         let pos3 = Position::from_fen("3k4/4b3/8/8/8/8/5B2/3K4 w - - 0 1");
         positions_have_insufficient_material(&[pos1, pos2, pos3]);
+    }
+
+    #[test]
+    fn position_to_fen_is_correct() {
+        let fens = [
+            "3k4/8/8/8/8/8/5R2/3K4 w - - 13 45",
+            "3k4/8/8/8/8/8/5Q2/3K4 b - - 88 32",
+            "3k4/8/8/8/8/8/5P2/3K4 w - - 12 17",
+            "3k4/8/8/8/8/3NB3/8/3K4 w - - 9 65",
+            "3k4/5n2/8/1b6/8/8/8/3K4 w - - 43 43",
+            "rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3 0 2",
+        ];
+
+        let positions = [
+            Position::from_fen(fens[0]),
+            Position::from_fen(fens[1]),
+            Position::from_fen(fens[2]),
+            Position::from_fen(fens[3]),
+            Position::from_fen(fens[4]),
+            Position::from_fen(fens[5]),
+        ];
+
+        let default = Position::default();
+        assert_eq!(default.to_fen(), DEFAULT_FEN);
+
+        for i in 0..6 {
+            assert_eq!(positions[i].to_fen(), fens[i]);
+        }
     }
 }
