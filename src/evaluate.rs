@@ -6,19 +6,13 @@ use crate::{
 pub type Eval = i32;
 pub const INFINITY: Eval = 32001;
 
-#[derive(Copy, Clone)]
-struct PieceValues {
-    mg: Eval,
-    eg: Eval,
-}
-
-const PIECE_VALUES: [PieceValues; 6] = [
-    PieceValues { mg: 82, eg: 94 },    // Pawn
-    PieceValues { mg: 337, eg: 281 },  // Knight
-    PieceValues { mg: 365, eg: 297 },  // Bishop
-    PieceValues { mg: 477, eg: 512 },  // Rook
-    PieceValues { mg: 1025, eg: 936 }, // Queen
-    PieceValues { mg: 0, eg: 0 },      // King
+const PIECE_VALUES: [Score; 6] = [
+    Score { mg: 82, eg: 94 },    // Pawn
+    Score { mg: 337, eg: 281 },  // Knight
+    Score { mg: 365, eg: 297 },  // Bishop
+    Score { mg: 477, eg: 512 },  // Rook
+    Score { mg: 1025, eg: 936 }, // Queen
+    Score { mg: 0, eg: 0 },      // King
 ];
 
 type PST = [Score; 64];
@@ -120,7 +114,7 @@ impl Score {
 }
 
 #[inline(always)]
-const fn piece_values(piece: Piece) -> PieceValues {
+const fn piece_values(piece: Piece) -> Score {
     PIECE_VALUES[piece.idx()]
 }
 
