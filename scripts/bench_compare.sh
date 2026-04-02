@@ -104,7 +104,7 @@ load_cases() {
 
   out_cases+=(
     "Start Position|position startpos"
-    "Open Sicilian|position fen r1bq1rk1/pp2bppp/2n2n2/2ppp3/4P3/2NP1NP1/PPP1PPBP/R1BQ1RK1 w - - 0 8"
+    "Open Sicilian|position fen r1bq1rk1/pp2bppp/2n2n2/2ppp3/4P3/2NP1NP1/PPP2PBP/R1BQ1RK1 w - - 0 8"
     "Tactical Middlegame|position fen 2r2rk1/pp1n1ppp/2pbpn2/q7/3PP3/2N1BN2/PPQ1BPPP/2RR2K1 w - - 0 12"
     "Quiet Endgame|position fen 8/5pk1/2p3p1/1pP1p2p/1P2P2P/5PK1/8/8 w - - 0 1"
     "Rook Endgame|position fen 8/8/4k3/2p2p2/2Pp1K2/3P4/8/3R4 w - - 0 1"
