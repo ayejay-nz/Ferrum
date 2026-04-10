@@ -425,6 +425,17 @@ impl Position {
             | bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()];
     }
 
+    // Compute a bitboard of all attackers to a square of the specified side excluding king attacks
+    pub fn attackers_to_by(&self, sq: Square, attacker: Colour, occ: Bitboard) -> Bitboard {
+        let bbs = bitboards();
+
+        (bbs.bishop_attacks(sq, occ) & self.bishop_sliders(attacker))
+            | (bbs.rook_attacks(sq, occ) & self.rook_sliders(attacker))
+            | (bbs.knight_attacks(sq) & self.pieces[attacker.idx()][Piece::Knight.idx()])
+            | (bbs.pawn_attacks(sq, attacker.opposite())
+                & self.pieces[attacker.idx()][Piece::Pawn.idx()])
+    }
+
     /// Check if a square is attacked by the opponent
     #[inline(always)]
     pub fn attackers_to_exist(&self, sq: Square, occ: Bitboard) -> bool {

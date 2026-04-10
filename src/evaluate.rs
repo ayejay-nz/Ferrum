@@ -1,166 +1,392 @@
+use std::ops::{Div, Mul};
+
 use crate::{
+    bitboard::{Bitboard, bitboards},
     position::Position,
-    types::{Colour, Piece, Square},
+    tune::{DEFAULT_PARAMS, Params},
+    types::{Black, Colour, Direction, Piece, Side, Square, White},
 };
 
 pub type Eval = i32;
 pub const INFINITY: Eval = 32001;
 
-const PIECE_VALUES: [Score; 6] = [
-    Score { mg: 82, eg: 94 },    // Pawn
-    Score { mg: 337, eg: 281 },  // Knight
-    Score { mg: 365, eg: 297 },  // Bishop
-    Score { mg: 477, eg: 512 },  // Rook
-    Score { mg: 1025, eg: 936 }, // Queen
-    Score { mg: 0, eg: 0 },      // King
-];
+const PHASE_WEIGHTS: [u32; 6] = [0, 1, 1, 2, 4, 0];
 
-type PST = [Score; 64];
-
-#[rustfmt::skip]
-const PAWN_PST: PST = [
-    Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 },
-    Score { mg:   98, eg:  178 }, Score { mg:  134, eg:  173 }, Score { mg:   61, eg:  158 }, Score { mg:   95, eg:  134 }, Score { mg:   68, eg:  147 }, Score { mg:  126, eg:  132 }, Score { mg:   34, eg:  165 }, Score { mg:  -11, eg:  187 },
-    Score { mg:   -6, eg:   94 }, Score { mg:    7, eg:  100 }, Score { mg:   26, eg:   85 }, Score { mg:   31, eg:   67 }, Score { mg:   65, eg:   56 }, Score { mg:   56, eg:   53 }, Score { mg:   25, eg:   82 }, Score { mg:  -20, eg:   84 },
-    Score { mg:  -14, eg:   32 }, Score { mg:   13, eg:   24 }, Score { mg:    6, eg:   13 }, Score { mg:   21, eg:    5 }, Score { mg:   23, eg:   -2 }, Score { mg:   12, eg:    4 }, Score { mg:   17, eg:   17 }, Score { mg:  -23, eg:   17 },
-    Score { mg:  -27, eg:   13 }, Score { mg:   -2, eg:    9 }, Score { mg:   -5, eg:   -3 }, Score { mg:   12, eg:   -7 }, Score { mg:   17, eg:   -7 }, Score { mg:    6, eg:   -8 }, Score { mg:   10, eg:    3 }, Score { mg:  -25, eg:   -1 },
-    Score { mg:  -26, eg:    4 }, Score { mg:   -4, eg:    7 }, Score { mg:   -4, eg:   -6 }, Score { mg:  -10, eg:    1 }, Score { mg:    3, eg:    0 }, Score { mg:    3, eg:   -5 }, Score { mg:   33, eg:   -1 }, Score { mg:  -12, eg:   -8 },
-    Score { mg:  -35, eg:   13 }, Score { mg:   -1, eg:    8 }, Score { mg:  -20, eg:    8 }, Score { mg:  -23, eg:   10 }, Score { mg:  -15, eg:   13 }, Score { mg:   24, eg:    0 }, Score { mg:   38, eg:    2 }, Score { mg:  -22, eg:   -7 },
-    Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }, Score { mg:    0, eg:    0 }
-];
-
-#[rustfmt::skip]
-const KNIGHT_PST: PST = [
-    Score { mg: -167, eg:  -58 }, Score { mg:  -89, eg:  -38 }, Score { mg:  -34, eg:  -13 }, Score { mg:  -49, eg:  -28 }, Score { mg:   61, eg:  -31 }, Score { mg:  -97, eg:  -27 }, Score { mg:  -15, eg:  -63 }, Score { mg: -107, eg:  -99 },
-    Score { mg:  -73, eg:  -25 }, Score { mg:  -41, eg:   -8 }, Score { mg:   72, eg:  -25 }, Score { mg:   36, eg:   -2 }, Score { mg:   23, eg:   -9 }, Score { mg:   62, eg:  -25 }, Score { mg:    7, eg:  -24 }, Score { mg:  -17, eg:  -52 },
-    Score { mg:  -47, eg:  -24 }, Score { mg:   60, eg:  -20 }, Score { mg:   37, eg:   10 }, Score { mg:   65, eg:    9 }, Score { mg:   84, eg:   -1 }, Score { mg:  129, eg:   -9 }, Score { mg:   73, eg:  -19 }, Score { mg:   44, eg:  -41 },
-    Score { mg:   -9, eg:  -17 }, Score { mg:   17, eg:    3 }, Score { mg:   19, eg:   22 }, Score { mg:   53, eg:   22 }, Score { mg:   37, eg:   22 }, Score { mg:   69, eg:   11 }, Score { mg:   18, eg:    8 }, Score { mg:   22, eg:  -18 },
-    Score { mg:  -13, eg:  -18 }, Score { mg:    4, eg:   -6 }, Score { mg:   16, eg:   16 }, Score { mg:   13, eg:   25 }, Score { mg:   28, eg:   16 }, Score { mg:   19, eg:   17 }, Score { mg:   21, eg:    4 }, Score { mg:   -8, eg:  -18 },
-    Score { mg:  -23, eg:  -23 }, Score { mg:   -9, eg:   -3 }, Score { mg:   12, eg:   -1 }, Score { mg:   10, eg:   15 }, Score { mg:   19, eg:   10 }, Score { mg:   17, eg:   -3 }, Score { mg:   25, eg:  -20 }, Score { mg:  -16, eg:  -22 },
-    Score { mg:  -29, eg:  -42 }, Score { mg:  -53, eg:  -20 }, Score { mg:  -12, eg:  -10 }, Score { mg:   -3, eg:   -5 }, Score { mg:   -1, eg:   -2 }, Score { mg:   18, eg:  -20 }, Score { mg:  -14, eg:  -23 }, Score { mg:  -19, eg:  -44 },
-    Score { mg: -105, eg:  -29 }, Score { mg:  -21, eg:  -51 }, Score { mg:  -58, eg:  -23 }, Score { mg:  -33, eg:  -15 }, Score { mg:  -17, eg:  -22 }, Score { mg:  -28, eg:  -18 }, Score { mg:  -19, eg:  -50 }, Score { mg:  -23, eg:  -64 }
-];
-
-#[rustfmt::skip]
-const BISHOP_PST: PST = [
-    Score { mg:  -29, eg:  -14 }, Score { mg:    4, eg:  -21 }, Score { mg:  -82, eg:  -11 }, Score { mg:  -37, eg:   -8 }, Score { mg:  -25, eg:   -7 }, Score { mg:  -42, eg:   -9 }, Score { mg:    7, eg:  -17 }, Score { mg:   -8, eg:  -24 },
-    Score { mg:  -26, eg:   -8 }, Score { mg:   16, eg:   -4 }, Score { mg:  -18, eg:    7 }, Score { mg:  -13, eg:  -12 }, Score { mg:   30, eg:   -3 }, Score { mg:   59, eg:  -13 }, Score { mg:   18, eg:   -4 }, Score { mg:  -47, eg:  -14 },
-    Score { mg:  -16, eg:    2 }, Score { mg:   37, eg:   -8 }, Score { mg:   43, eg:    0 }, Score { mg:   40, eg:   -1 }, Score { mg:   35, eg:   -2 }, Score { mg:   50, eg:    6 }, Score { mg:   37, eg:    0 }, Score { mg:   -2, eg:    4 },
-    Score { mg:   -4, eg:   -3 }, Score { mg:    5, eg:    9 }, Score { mg:   19, eg:   12 }, Score { mg:   50, eg:    9 }, Score { mg:   37, eg:   14 }, Score { mg:   37, eg:   10 }, Score { mg:    7, eg:    3 }, Score { mg:   -2, eg:    2 },
-    Score { mg:   -6, eg:   -6 }, Score { mg:   13, eg:    3 }, Score { mg:   13, eg:   13 }, Score { mg:   26, eg:   19 }, Score { mg:   34, eg:    7 }, Score { mg:   12, eg:   10 }, Score { mg:   10, eg:   -3 }, Score { mg:    4, eg:   -9 },
-    Score { mg:    0, eg:  -12 }, Score { mg:   15, eg:   -3 }, Score { mg:   15, eg:    8 }, Score { mg:   15, eg:   10 }, Score { mg:   14, eg:   13 }, Score { mg:   27, eg:    3 }, Score { mg:   18, eg:   -7 }, Score { mg:   10, eg:  -15 },
-    Score { mg:    4, eg:  -14 }, Score { mg:   15, eg:  -18 }, Score { mg:   16, eg:   -7 }, Score { mg:    0, eg:   -1 }, Score { mg:    7, eg:    4 }, Score { mg:   21, eg:   -9 }, Score { mg:   33, eg:  -15 }, Score { mg:    1, eg:  -27 },
-    Score { mg:  -33, eg:  -23 }, Score { mg:   -3, eg:   -9 }, Score { mg:  -14, eg:  -23 }, Score { mg:  -21, eg:   -5 }, Score { mg:  -13, eg:   -9 }, Score { mg:  -12, eg:  -16 }, Score { mg:  -39, eg:   -5 }, Score { mg:  -21, eg:  -17 }
-];
-
-#[rustfmt::skip]
-const ROOK_PST: PST = [
-    Score { mg:   32, eg:   13 }, Score { mg:   42, eg:   10 }, Score { mg:   32, eg:   18 }, Score { mg:   51, eg:   15 }, Score { mg:   63, eg:   12 }, Score { mg:    9, eg:   12 }, Score { mg:   31, eg:    8 }, Score { mg:   43, eg:    5 },
-    Score { mg:   27, eg:   11 }, Score { mg:   32, eg:   13 }, Score { mg:   58, eg:   13 }, Score { mg:   62, eg:   11 }, Score { mg:   80, eg:   -3 }, Score { mg:   67, eg:    3 }, Score { mg:   26, eg:    8 }, Score { mg:   44, eg:    3 },
-    Score { mg:   -5, eg:    7 }, Score { mg:   19, eg:    7 }, Score { mg:   26, eg:    7 }, Score { mg:   36, eg:    5 }, Score { mg:   17, eg:    4 }, Score { mg:   45, eg:   -3 }, Score { mg:   61, eg:   -5 }, Score { mg:   16, eg:   -3 },
-    Score { mg:  -24, eg:    4 }, Score { mg:  -11, eg:    3 }, Score { mg:    7, eg:   13 }, Score { mg:   26, eg:    1 }, Score { mg:   24, eg:    2 }, Score { mg:   35, eg:    1 }, Score { mg:   -8, eg:   -1 }, Score { mg:  -20, eg:    2 },
-    Score { mg:  -36, eg:    3 }, Score { mg:  -26, eg:    5 }, Score { mg:  -12, eg:    8 }, Score { mg:   -1, eg:    4 }, Score { mg:    9, eg:   -5 }, Score { mg:   -7, eg:   -6 }, Score { mg:    6, eg:   -8 }, Score { mg:  -23, eg:  -11 },
-    Score { mg:  -45, eg:   -4 }, Score { mg:  -25, eg:    0 }, Score { mg:  -16, eg:   -5 }, Score { mg:  -17, eg:   -1 }, Score { mg:    3, eg:   -7 }, Score { mg:    0, eg:  -12 }, Score { mg:   -5, eg:   -8 }, Score { mg:  -33, eg:  -16 },
-    Score { mg:  -44, eg:   -6 }, Score { mg:  -16, eg:   -6 }, Score { mg:  -20, eg:    0 }, Score { mg:   -9, eg:    2 }, Score { mg:   -1, eg:   -9 }, Score { mg:   11, eg:   -9 }, Score { mg:   -6, eg:  -11 }, Score { mg:  -71, eg:   -3 },
-    Score { mg:  -19, eg:   -9 }, Score { mg:  -13, eg:    2 }, Score { mg:    1, eg:    3 }, Score { mg:   17, eg:   -1 }, Score { mg:   16, eg:   -5 }, Score { mg:    7, eg:  -13 }, Score { mg:  -37, eg:    4 }, Score { mg:  -26, eg:  -20 }
-];
-
-#[rustfmt::skip]
-const QUEEN_PST: PST = [
-    Score { mg:  -28, eg:   -9 }, Score { mg:    0, eg:   22 }, Score { mg:   29, eg:   22 }, Score { mg:   12, eg:   27 }, Score { mg:   59, eg:   27 }, Score { mg:   44, eg:   19 }, Score { mg:   43, eg:   10 }, Score { mg:   45, eg:   20 },
-    Score { mg:  -24, eg:  -17 }, Score { mg:  -39, eg:   20 }, Score { mg:   -5, eg:   32 }, Score { mg:    1, eg:   41 }, Score { mg:  -16, eg:   58 }, Score { mg:   57, eg:   25 }, Score { mg:   28, eg:   30 }, Score { mg:   54, eg:    0 },
-    Score { mg:  -13, eg:  -20 }, Score { mg:  -17, eg:    6 }, Score { mg:    7, eg:    9 }, Score { mg:    8, eg:   49 }, Score { mg:   29, eg:   47 }, Score { mg:   56, eg:   35 }, Score { mg:   47, eg:   19 }, Score { mg:   57, eg:    9 },
-    Score { mg:  -27, eg:    3 }, Score { mg:  -27, eg:   22 }, Score { mg:  -16, eg:   24 }, Score { mg:  -16, eg:   45 }, Score { mg:   -1, eg:   57 }, Score { mg:   17, eg:   40 }, Score { mg:   -2, eg:   57 }, Score { mg:    1, eg:   36 },
-    Score { mg:   -9, eg:  -18 }, Score { mg:  -26, eg:   28 }, Score { mg:   -9, eg:   19 }, Score { mg:  -10, eg:   47 }, Score { mg:   -2, eg:   31 }, Score { mg:   -4, eg:   34 }, Score { mg:    3, eg:   39 }, Score { mg:   -3, eg:   23 },
-    Score { mg:  -14, eg:  -16 }, Score { mg:    2, eg:  -27 }, Score { mg:  -11, eg:   15 }, Score { mg:   -2, eg:    6 }, Score { mg:   -5, eg:    9 }, Score { mg:    2, eg:   17 }, Score { mg:   14, eg:   10 }, Score { mg:    5, eg:    5 },
-    Score { mg:  -35, eg:  -22 }, Score { mg:   -8, eg:  -23 }, Score { mg:   11, eg:  -30 }, Score { mg:    2, eg:  -16 }, Score { mg:    8, eg:  -16 }, Score { mg:   15, eg:  -23 }, Score { mg:   -3, eg:  -36 }, Score { mg:    1, eg:  -32 },
-    Score { mg:   -1, eg:  -33 }, Score { mg:  -18, eg:  -28 }, Score { mg:   -9, eg:  -22 }, Score { mg:   10, eg:  -43 }, Score { mg:  -15, eg:   -5 }, Score { mg:  -25, eg:  -32 }, Score { mg:  -31, eg:  -20 }, Score { mg:  -50, eg:  -41 }
-];
-
-#[rustfmt::skip]
-const KING_PST: PST = [
-    Score { mg:  -65, eg:  -74 }, Score { mg:   23, eg:  -35 }, Score { mg:   16, eg:  -18 }, Score { mg:  -15, eg:  -18 }, Score { mg:  -56, eg:  -11 }, Score { mg:  -34, eg:   15 }, Score { mg:    2, eg:    4 }, Score { mg:   13, eg:  -17 },
-    Score { mg:   29, eg:  -12 }, Score { mg:   -1, eg:   17 }, Score { mg:  -20, eg:   14 }, Score { mg:   -7, eg:   17 }, Score { mg:   -8, eg:   17 }, Score { mg:   -4, eg:   38 }, Score { mg:  -38, eg:   23 }, Score { mg:  -29, eg:   11 },
-    Score { mg:   -9, eg:   10 }, Score { mg:   24, eg:   17 }, Score { mg:    2, eg:   23 }, Score { mg:  -16, eg:   15 }, Score { mg:  -20, eg:   20 }, Score { mg:    6, eg:   45 }, Score { mg:   22, eg:   44 }, Score { mg:  -22, eg:   13 },
-    Score { mg:  -17, eg:   -8 }, Score { mg:  -20, eg:   22 }, Score { mg:  -12, eg:   24 }, Score { mg:  -27, eg:   27 }, Score { mg:  -30, eg:   26 }, Score { mg:  -25, eg:   33 }, Score { mg:  -14, eg:   26 }, Score { mg:  -36, eg:    3 },
-    Score { mg:  -49, eg:  -18 }, Score { mg:   -1, eg:   -4 }, Score { mg:  -27, eg:   21 }, Score { mg:  -39, eg:   24 }, Score { mg:  -46, eg:   27 }, Score { mg:  -44, eg:   23 }, Score { mg:  -33, eg:    9 }, Score { mg:  -51, eg:  -11 },
-    Score { mg:  -14, eg:  -19 }, Score { mg:  -14, eg:   -3 }, Score { mg:  -22, eg:   11 }, Score { mg:  -46, eg:   21 }, Score { mg:  -44, eg:   23 }, Score { mg:  -30, eg:   16 }, Score { mg:  -15, eg:    7 }, Score { mg:  -27, eg:   -9 },
-    Score { mg:    1, eg:  -27 }, Score { mg:    7, eg:  -11 }, Score { mg:   -8, eg:    4 }, Score { mg:  -64, eg:   13 }, Score { mg:  -43, eg:   14 }, Score { mg:  -16, eg:    4 }, Score { mg:    9, eg:   -5 }, Score { mg:    8, eg:  -17 },
-    Score { mg:  -15, eg:  -53 }, Score { mg:   36, eg:  -34 }, Score { mg:   12, eg:  -21 }, Score { mg:  -54, eg:  -11 }, Score { mg:    8, eg:  -28 }, Score { mg:  -28, eg:  -14 }, Score { mg:   24, eg:  -24 }, Score { mg:   14, eg:  -43 }
-];
-
-const PSTS: [PST; 6] = [
-    PAWN_PST,
-    KNIGHT_PST,
-    BISHOP_PST,
-    ROOK_PST,
-    QUEEN_PST,
-    KING_PST,
-];
-
-const PHASE_WEIGHTS: [i32; 6] = [0, 1, 1, 2, 4, 0];
-
-#[derive(Copy, Clone, Default)]
-struct Score {
-    mg: Eval,
-    eg: Eval,
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Score {
+    pub mg: Eval,
+    pub eg: Eval,
 }
 
 impl Score {
-    fn add(&mut self, sign: Eval, mg: Eval, eg: Eval) {
-        self.mg += sign * mg;
-        self.eg += sign * eg;
+    fn add<S: Side>(&mut self, score: Score) {
+        let sign = if S::IS_WHITE { 1 } else { -1 };
+        self.mg += sign * score.mg;
+        self.eg += sign * score.eg;
+    }
+}
+
+impl Mul<i32> for Score {
+    type Output = Self;
+    fn mul(self, rhs: i32) -> Self {
+        Self {
+            mg: self.mg * rhs,
+            eg: self.eg * rhs,
+        }
+    }
+}
+
+impl Div<i32> for Score {
+    type Output = Self;
+    fn div(self, rhs: i32) -> Self {
+        Self {
+            mg: self.mg / rhs,
+            eg: self.eg / rhs,
+        }
     }
 }
 
 #[inline(always)]
-const fn piece_values(piece: Piece) -> Score {
-    PIECE_VALUES[piece.idx()]
-}
-
-#[inline(always)]
-const fn phase_weight(piece: Piece) -> i32 {
+const fn phase_weight(piece: Piece) -> u32 {
     PHASE_WEIGHTS[piece.idx()]
 }
 
 #[inline(always)]
-const fn relative_square(colour: Colour, sq: Square) -> usize {
-    match colour {
+const fn relative_square<S: Side>(sq: Square) -> usize {
+    match S::COLOUR {
         Colour::Black => sq.idx(),
         Colour::White => sq.idx() ^ 56,
     }
 }
 
-fn eval_material_pst(pos: &Position, score: &mut Score) -> i32 {
+#[inline(always)]
+const fn relative_rank<S: Side>(sq: Square) -> u8 {
+    match S::COLOUR {
+        Colour::White => sq.rank(),
+        Colour::Black => 7 - sq.rank(),
+    }
+}
+
+fn game_phase(pos: &Position) -> i32 {
     let mut phase = 0;
+    let white = pos.pieces[Colour::White.idx()];
+    let black = pos.pieces[Colour::Black.idx()];
 
-    for colour in [Colour::White, Colour::Black] {
-        let sign = if colour == Colour::White { 1 } else { -1 };
+    phase += (white[Piece::Pawn.idx()] | black[Piece::Pawn.idx()]).bit_count()
+        * phase_weight(Piece::Pawn);
+    phase += (white[Piece::Knight.idx()] | black[Piece::Knight.idx()]).bit_count()
+        * phase_weight(Piece::Knight);
+    phase += (white[Piece::Bishop.idx()] | black[Piece::Bishop.idx()]).bit_count()
+        * phase_weight(Piece::Bishop);
+    phase += (white[Piece::Rook.idx()] | black[Piece::Rook.idx()]).bit_count()
+        * phase_weight(Piece::Rook);
+    phase += (white[Piece::Queen.idx()] | black[Piece::Queen.idx()]).bit_count()
+        * phase_weight(Piece::Queen);
 
-        for piece in [
-            Piece::Pawn,
-            Piece::Knight,
-            Piece::Bishop,
-            Piece::Rook,
-            Piece::Queen,
-            Piece::King,
-        ] {
-            let values = piece_values(piece);
-            let mut bb = pos.pieces[colour.idx()][piece.idx()];
+    phase as i32
+}
 
-            while !bb.is_empty() {
-                let lsb = bb.pop_lsb();
-                let sq = relative_square(colour, lsb);
+fn evaluate_pawns<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
+    let opp_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
 
-                score.mg += sign * (values.mg + PSTS[piece.idx()][sq].mg);
-                score.eg += sign * (values.eg + PSTS[piece.idx()][sq].eg);
+    // Material eval
+    score.add::<S>(params.pawn_value * pawns.bit_count() as i32);
 
-                phase += phase_weight(piece);
+    let mut file_counts = [0u8; 8];
+
+    // PST eval
+    let mut pawn_bb = pawns;
+    while !pawn_bb.is_empty() {
+        let pawn = pawn_bb.pop_lsb();
+        let sq = relative_square::<S>(pawn);
+        score.add::<S>(params.pawn_pst[sq]);
+
+        file_counts[pawn.file() as usize] += 1;
+    }
+
+    // Find passed pawns
+    let stoppers =
+        (opp_pawns | opp_pawns.shift(Direction::East) | opp_pawns.shift(Direction::West))
+            .backfill(S::COLOUR);
+
+    let mut passers = pawns & !stoppers;
+
+    while !passers.is_empty() {
+        let sq = passers.pop_lsb();
+        let rank = if S::IS_WHITE {
+            sq.rank() as usize - 1
+        } else {
+            7 - sq.rank() as usize - 1
+        };
+
+        score.add::<S>(params.passed_pawn[rank]);
+    }
+
+    // Scan each file for isolated/multiple pawns
+    for file in 0..8 {
+        let pawn_count = file_counts[file].min(4);
+
+        // Check for double/tripled/etc
+        if pawn_count > 1 {
+            match pawn_count {
+                2 => score.add::<S>(params.doubled_pawns),
+                3 => score.add::<S>(params.tripled_pawns),
+                4 => score.add::<S>(params.quadrupled_pawns),
+                _ => unreachable!(),
+            }
+        }
+
+        // Check if a pawn is isolated
+        let left = file.checked_sub(1).map(|f| file_counts[f]).unwrap_or(0);
+        let right = file_counts.get(file + 1).copied().unwrap_or(0);
+
+        if pawn_count > 0 && left == 0 && right == 0 {
+            let bucket = file.min(7 - file);
+            score.add::<S>(params.isolated_pawn[bucket]);
+        }
+    }
+}
+
+fn evaluate_knights<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let bbs = bitboards();
+
+    let own_occ = pos.occupancy[S::IDX];
+    let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
+    let pawn_count = pawns.bit_count() as usize;
+
+    let mut knights = pos.pieces[S::IDX][Piece::Knight.idx()];
+
+    // Material eval
+    score.add::<S>(params.knight_value * knights.bit_count() as i32);
+
+    while !knights.is_empty() {
+        let knight = knights.pop_lsb();
+
+        // PST eval
+        let sq = relative_square::<S>(knight);
+        score.add::<S>(params.knight_pst[sq]);
+
+        // Mobility
+        let attacks = bbs.knight_attacks(knight) & !own_occ;
+        let mobility = attacks.bit_count() as usize;
+
+        score.add::<S>(params.knight_mobility[mobility]);
+
+        // Adjust knight value based on number of pawns remaining
+        score.add::<S>(params.knight_adj[pawn_count]);
+
+        // Knight outposts
+        // Only care about knights in opponent half of the board
+        let rank = relative_rank::<S>(knight);
+        if rank < 4 {
+            continue;
+        }
+
+        // Opponent pawns on adjacent files in front of the knight can challenge it
+        let front = knight.bitboard().frontfill(S::COLOUR) ^ knight.bitboard();
+        let adj_files = front.shift(Direction::East) | front.shift(Direction::West);
+        let challengers = pos.pieces[S::THEM][Piece::Pawn.idx()] & adj_files;
+
+        if challengers.is_empty() {
+            // If own pawn supports the outpost
+            if !(bbs.pawn_attacks(knight, S::COLOUR.opposite()) & pawns).is_empty() {
+                score.add::<S>(params.defended_knight_outpost);
+            } else {
+                score.add::<S>(params.knight_outpost);
             }
         }
     }
+}
 
-    phase
+fn evaluate_bishops<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let bbs = bitboards();
+
+    let own_occ = pos.occupancy[S::IDX];
+    let occ = pos.occupancy[2];
+
+    let mut bishops = pos.pieces[S::IDX][Piece::Bishop.idx()];
+
+    // Material eval
+    let bishop_count = bishops.bit_count();
+    score.add::<S>(params.bishop_value * bishop_count as i32);
+
+    let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
+    let light_pawns = (pawns & Bitboard::LIGHT_SQUARES).bit_count() as usize;
+    let dark_pawns = (pawns & Bitboard::DARK_SQUARES).bit_count() as usize;
+
+    // Bishop pair
+    if bishop_count > 1 {
+        score.add::<S>(params.bishop_pair);
+    }
+
+    while !bishops.is_empty() {
+        let bishop = bishops.pop_lsb();
+
+        // PST eval
+        let sq = relative_square::<S>(bishop);
+        score.add::<S>(params.bishop_pst[sq]);
+
+        // Mobility
+        let attacks = bbs.bishop_attacks(bishop, occ) & !own_occ;
+        let mobility = attacks.bit_count() as usize;
+
+        score.add::<S>(params.bishop_mobility[mobility]);
+
+        // Good/bad bishop eval
+        if bishop.colour() == Colour::White {
+            score.add::<S>(params.bishop_same_colour_pawns[light_pawns]);
+        } else {
+            score.add::<S>(params.bishop_same_colour_pawns[dark_pawns]);
+        }
+    }
+}
+
+fn evaluate_rooks<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let bbs = bitboards();
+
+    let own_occ = pos.occupancy[S::IDX];
+    let occ = pos.occupancy[2];
+
+    let own_pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
+    let opp_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
+
+    let pawn_count = own_pawns.bit_count() as usize;
+
+    let mut rooks = pos.pieces[S::IDX][Piece::Rook.idx()];
+
+    // Material eval
+    score.add::<S>(params.rook_value * rooks.bit_count() as i32);
+
+    while !rooks.is_empty() {
+        let rook = rooks.pop_lsb();
+        let file = rook.file();
+
+        // PST eval
+        let sq = relative_square::<S>(rook);
+        score.add::<S>(params.rook_pst[sq]);
+
+        // Mobility
+        let attacks = bbs.rook_attacks(rook, occ) & !own_occ;
+        let mobility = attacks.bit_count() as usize;
+
+        score.add::<S>(params.rook_mobility[mobility]);
+
+        // Open/semi open files
+        let own_on_file = own_pawns.file_occupied(file);
+        let opp_on_file = opp_pawns.file_occupied(file);
+
+        if !own_on_file {
+            if !opp_on_file {
+                score.add::<S>(params.rook_open_file);
+            } else {
+                score.add::<S>(params.rook_semi_open_file)
+            }
+        }
+
+        // Adjust rook value based on number of pawns remaining
+        score.add::<S>(params.rook_adj[pawn_count]);
+    }
+}
+
+fn evaluate_queens<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let bbs = bitboards();
+
+    let own_occ = pos.occupancy[S::IDX];
+    let occ = pos.occupancy[2];
+
+    let mut queens = pos.pieces[S::IDX][Piece::Queen.idx()];
+
+    // Material eval
+    score.add::<S>(params.queen_value * queens.bit_count() as i32);
+
+    while !queens.is_empty() {
+        let queen = queens.pop_lsb();
+
+        // PST eval
+        let sq = relative_square::<S>(queen);
+        score.add::<S>(params.queen_pst[sq]);
+
+        // Mobility
+        let attacks = (bbs.bishop_attacks(queen, occ) | bbs.rook_attacks(queen, occ)) & !own_occ;
+        let mobility = attacks.bit_count() as usize;
+
+        score.add::<S>(params.queen_mobility[mobility]);
+    }
+}
+
+fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+    let bbs = bitboards();
+
+    let king = if S::IS_WHITE {
+        pos.white_king_square
+    } else {
+        pos.black_king_square
+    };
+
+    // PST evaluation
+    let sq = relative_square::<S>(king);
+    score.add::<S>(params.king_pst[sq]);
+
+    let own_pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
+    let opp_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
+
+    let file_bb = king.file_bb();
+    let file = king.file();
+
+    // King on open/semi open files
+    let own_on_file = own_pawns.file_occupied(file);
+    let opp_on_file = opp_pawns.file_occupied(file);
+
+    if !own_on_file {
+        if !opp_on_file {
+            score.add::<S>(params.king_on_open_file);
+        } else {
+            score.add::<S>(params.king_on_semi_open_file);
+        }
+    }
+
+    // King ring attacks
+    let occ = pos.occupancy[2];
+    let enemy = S::COLOUR.opposite();
+
+    let mut attacked = 0;
+    let mut king_ring = bbs.king_attacks(king);
+    while !king_ring.is_empty() {
+        let sq = king_ring.pop_lsb();
+        if !pos.attackers_to_by(sq, enemy, occ).is_empty() {
+            attacked += 1;
+        }
+    }
+
+    score.add::<S>(params.king_ring_attacks[attacked.min(4)]);
+
+    let backrank: u8 = if S::IS_WHITE { 0 } else { 7 };
+
+    // King pawn shield
+    let mut shield_count = 0;
+    let mut pawn_shield =
+        own_pawns & (file_bb | file_bb.shift(Direction::East) | file_bb.shift(Direction::West));
+    while !pawn_shield.is_empty() {
+        let pawn = pawn_shield.pop_lsb();
+        let d = backrank.abs_diff(pawn.rank()).min(4) as usize - 1;
+
+        score.add::<S>(params.king_pawn_shield_distance[d]);
+        shield_count += 1;
+    }
+    if shield_count < 3 {
+        score.add::<S>(params.king_shield_missing_pawn * (3 - shield_count));
+    }
+
+    // Enemy pawn storm
+    let mut pawn_storm =
+        opp_pawns & (file_bb | file_bb.shift(Direction::East) | file_bb.shift(Direction::West));
+    while !pawn_storm.is_empty() {
+        let pawn = pawn_storm.pop_lsb();
+        let d = backrank.abs_diff(pawn.rank()).min(4) as usize - 1;
+
+        score.add::<S>(params.enemy_pawn_distance_from_backrank[d]);
+    }
 }
 
 fn taper(score: Score, phase: i32, us: Colour) -> Eval {
@@ -173,9 +399,30 @@ fn taper(score: Score, phase: i32, us: Colour) -> Eval {
 }
 
 pub fn evaluate(pos: &Position) -> Eval {
-    let mut score = Score::default();
+    evaluate_with(pos, &DEFAULT_PARAMS)
+}
 
-    let phase = eval_material_pst(pos, &mut score);
+pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
+    let mut score = Score::default();
+    let phase = game_phase(pos);
+
+    evaluate_pawns::<White>(pos, &mut score, params);
+    evaluate_pawns::<Black>(pos, &mut score, params);
+
+    evaluate_knights::<White>(pos, &mut score, params);
+    evaluate_knights::<Black>(pos, &mut score, params);
+
+    evaluate_bishops::<White>(pos, &mut score, params);
+    evaluate_bishops::<Black>(pos, &mut score, params);
+
+    evaluate_rooks::<White>(pos, &mut score, params);
+    evaluate_rooks::<Black>(pos, &mut score, params);
+
+    evaluate_queens::<White>(pos, &mut score, params);
+    evaluate_queens::<Black>(pos, &mut score, params);
+
+    evaluate_king_safety::<White>(pos, &mut score, params);
+    evaluate_king_safety::<Black>(pos, &mut score, params);
 
     taper(score, phase, pos.side_to_move)
 }
