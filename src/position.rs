@@ -765,8 +765,8 @@ impl Position {
         };
 
         // Half/fullmove count
-        position.halfmove_clock = fen_parts[4].parse::<u8>().unwrap();
-        position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap();
+        position.halfmove_clock = fen_parts[4].parse::<u8>().unwrap_or(0);
+        position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap_or(0);
 
         // Zobrist key
         position.zkey = ZKey::compute_zobrist_key(
