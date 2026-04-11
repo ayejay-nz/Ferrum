@@ -562,6 +562,67 @@ impl Params {
 
         *self = Self::unpack(&theta);
     }
+
+    pub fn make_nondecreasing<const N: usize>(arr: &mut [Score; N]) {
+        for i in 1..N {
+            arr[i].mg = arr[i].mg.max(arr[i - 1].mg);
+            arr[i].eg = arr[i].eg.max(arr[i - 1].eg);
+        }
+    }
+
+    pub fn make_nonincreasing<const N: usize>(arr: &mut [Score; N]) {
+        for i in 1..N {
+            arr[i].mg = arr[i].mg.min(arr[i - 1].mg);
+            arr[i].eg = arr[i].eg.min(arr[i - 1].eg);
+        }
+    }
+
+    fn normalise_mean_zero<const N: usize>(base: &mut Score, arr: &mut [Score; N]) {
+        let mean_mg = arr.iter().map(|s| s.mg).sum::<i32>() / N as i32;
+        let mean_eg = arr.iter().map(|s| s.eg).sum::<i32>() / N as i32;
+
+        for s in arr {
+            s.mg -= mean_mg;
+            s.eg -= mean_eg;
+        }
+
+        base.mg += mean_mg;
+        base.eg += mean_eg;
+    }
+
+    pub fn project(&mut self) {
+        Self::make_nondecreasing(&mut self.passed_pawn);
+
+        Self::make_nondecreasing(&mut self.knight_adj);
+        Self::make_nonincreasing(&mut self.rook_adj);
+
+        self.tripled_pawns.mg = self.tripled_pawns.mg.min(self.doubled_pawns.mg);
+        self.tripled_pawns.eg = self.tripled_pawns.eg.min(self.doubled_pawns.eg);
+
+        self.quadrupled_pawns.mg = self.quadrupled_pawns.mg.min(self.tripled_pawns.mg);
+        self.quadrupled_pawns.eg = self.quadrupled_pawns.eg.min(self.tripled_pawns.eg);
+
+        // Material value
+        self.bishop_value.mg = self.bishop_value.mg.max(self.knight_value.mg - 20);
+        self.bishop_value.eg = self.bishop_value.eg.max(self.knight_value.eg - 20);
+
+        self.rook_value.mg = self.rook_value.mg.max(self.bishop_value.mg + 100);
+        self.rook_value.eg = self.rook_value.eg.max(self.bishop_value.eg + 100);
+
+        // Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores
+        // Results in piece values more accurately representing their true value
+        Self::normalise_mean_zero(&mut self.knight_value, &mut self.knight_adj);
+        Self::normalise_mean_zero(&mut self.rook_value, &mut self.rook_adj);
+
+        Self::normalise_mean_zero(&mut self.knight_value, &mut self.knight_mobility);
+        Self::normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_mobility);
+        Self::normalise_mean_zero(&mut self.rook_value, &mut self.rook_mobility);
+        Self::normalise_mean_zero(&mut self.queen_value, &mut self.queen_mobility);
+
+        Self::normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_same_colour_pawns);
+
+        self.clamp();
+    }
 }
 
 pub const DEFAULT_PARAMS: Params = Params {
