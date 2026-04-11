@@ -243,6 +243,120 @@ pub const KING_PST: [Score; 64] = [
     s!( -85,    8), s!(  80,  -58), s!(  68,  -29), s!( -56,   13), s!(  26,  -14), s!( -16,    0), s!(  54,  -30), s!(  36,  -63)
 ];
 
+fn push_score(out: &mut Vec<i32>, s: Score) {
+    out.push(s.mg);
+    out.push(s.eg);
+}
+
+fn push_score_array<const N: usize>(out: &mut Vec<i32>, arr: &[Score; N]) {
+    for &s in arr {
+        push_score(out, s);
+    }
+}
+
+fn push_pawn_pst(out: &mut Vec<i32>, pst: &[Score; 64]) {
+    for (i, &s) in pst.iter().enumerate() {
+        // Skip 1st and 8th rank
+        if !(8..56).contains(&i) {
+            continue;
+        }
+        out.push(s.mg);
+        out.push(s.eg);
+    }
+}
+
+fn next_score<I: Iterator<Item = i32>>(it: &mut I) -> Score {
+    Score {
+        mg: it.next().unwrap(),
+        eg: it.next().unwrap(),
+    }
+}
+
+fn next_score_array<const N: usize, I: Iterator<Item = i32>>(it: &mut I) -> [Score; N] {
+    array::from_fn(|_| next_score(it))
+}
+
+fn next_pawn_pst<I: Iterator<Item = i32>>(it: &mut I, base: &[Score; 64]) -> [Score; 64] {
+    let mut pst = *base;
+
+    for (i, sq) in pst.iter_mut().enumerate() {
+        // Skip 1st and 8th rank
+        if !(8..56).contains(&i) {
+            continue;
+        }
+
+        *sq = Score {
+            mg: it.next().unwrap(),
+            eg: it.next().unwrap(),
+        }
+    }
+
+    pst
+}
+
+fn make_nondecreasing<const N: usize>(arr: &mut [Score; N]) {
+    for i in 1..N {
+        arr[i].mg = arr[i].mg.max(arr[i - 1].mg);
+        arr[i].eg = arr[i].eg.max(arr[i - 1].eg);
+    }
+}
+
+fn make_nonincreasing<const N: usize>(arr: &mut [Score; N]) {
+    for i in 1..N {
+        arr[i].mg = arr[i].mg.min(arr[i - 1].mg);
+        arr[i].eg = arr[i].eg.min(arr[i - 1].eg);
+    }
+}
+
+fn normalise_mean_zero<const N: usize>(base: &mut Score, arr: &mut [Score; N]) {
+    let mean_mg = arr.iter().map(|s| s.mg).sum::<i32>() / N as i32;
+    let mean_eg = arr.iter().map(|s| s.eg).sum::<i32>() / N as i32;
+
+    for s in arr {
+        s.mg -= mean_mg;
+        s.eg -= mean_eg;
+    }
+
+    base.mg += mean_mg;
+    base.eg += mean_eg;
+}
+
+fn push_score_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+    out.push(b); // mg
+    out.push(b); // eg
+}
+
+fn push_score_array_bounds<const N: usize>(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+    for _ in 0..N {
+        push_score_bounds(out, b);
+    }
+}
+
+fn push_pawn_pst_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+    for _ in 8..56 {
+        push_score_bounds(out, b);
+    }
+}
+
+pub trait TunableParams: Sync + Sized {
+    fn pack(&self) -> Vec<i32>;
+    fn unpack(values: &[i32]) -> Self;
+    fn flat_bounds() -> Vec<ParamBounds>;
+    fn project(&mut self);
+    fn default() -> Self;
+
+    fn clamp(&mut self) {
+        let mut theta = self.pack();
+        let bounds = Self::flat_bounds();
+
+        for i in 0..theta.len() {
+            theta[i] = theta[i].clamp(bounds[i].min, bounds[i].max);
+        }
+
+        *self = Self::unpack(&theta);
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct ParamBounds {
     pub min: i32,
@@ -295,31 +409,9 @@ pub struct Params {
     pub queen_mobility: [Score; 28],
 }
 
-impl Params {
-    pub fn pack(&self) -> Vec<i32> {
+impl TunableParams for Params {
+    fn pack(&self) -> Vec<i32> {
         let mut out = Vec::new();
-
-        fn push_score(out: &mut Vec<i32>, s: Score) {
-            out.push(s.mg);
-            out.push(s.eg);
-        }
-
-        fn push_score_array<const N: usize>(out: &mut Vec<i32>, arr: &[Score; N]) {
-            for &s in arr {
-                push_score(out, s);
-            }
-        }
-
-        fn push_pawn_pst(out: &mut Vec<i32>, pst: &[Score; 64]) {
-            for (i, &s) in pst.iter().enumerate() {
-                // Skip 1st and 8th rank
-                if !(8..56).contains(&i) {
-                    continue;
-                }
-                out.push(s.mg);
-                out.push(s.eg);
-            }
-        }
 
         push_pawn_pst(&mut out, &self.pawn_pst);
         push_score_array(&mut out, &self.knight_pst);
@@ -367,36 +459,7 @@ impl Params {
         out
     }
 
-    pub fn unpack(values: &[i32]) -> Self {
-        fn next_score<I: Iterator<Item = i32>>(it: &mut I) -> Score {
-            Score {
-                mg: it.next().unwrap(),
-                eg: it.next().unwrap(),
-            }
-        }
-
-        fn next_score_array<const N: usize, I: Iterator<Item = i32>>(it: &mut I) -> [Score; N] {
-            array::from_fn(|_| next_score(it))
-        }
-
-        fn next_pawn_pst<I: Iterator<Item = i32>>(it: &mut I, base: &[Score; 64]) -> [Score; 64] {
-            let mut pst = *base;
-
-            for (i, sq) in pst.iter_mut().enumerate() {
-                // Skip 1st and 8th rank
-                if !(8..56).contains(&i) {
-                    continue;
-                }
-
-                *sq = Score {
-                    mg: it.next().unwrap(),
-                    eg: it.next().unwrap(),
-                }
-            }
-
-            pst
-        }
-
+    fn unpack(values: &[i32]) -> Self {
         let mut it = values.iter().copied();
 
         let params = Self {
@@ -448,25 +511,8 @@ impl Params {
         params
     }
 
-    pub fn flat_bounds() -> Vec<ParamBounds> {
+    fn flat_bounds() -> Vec<ParamBounds> {
         let mut out = Vec::new();
-
-        fn push_score_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
-            out.push(b); // mg
-            out.push(b); // eg
-        }
-
-        fn push_score_array_bounds<const N: usize>(out: &mut Vec<ParamBounds>, b: ParamBounds) {
-            for _ in 0..N {
-                push_score_bounds(out, b);
-            }
-        }
-
-        fn push_pawn_pst_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
-            for _ in 8..56 {
-                push_score_bounds(out, b);
-            }
-        }
 
         let [
             pawn_pst,
@@ -552,49 +598,11 @@ impl Params {
         out
     }
 
-    pub fn clamp(&mut self) {
-        let mut theta = self.pack();
-        let bounds = Self::flat_bounds();
+    fn project(&mut self) {
+        make_nondecreasing(&mut self.passed_pawn);
 
-        for i in 0..theta.len() {
-            theta[i] = theta[i].clamp(bounds[i].min, bounds[i].max);
-        }
-
-        *self = Self::unpack(&theta);
-    }
-
-    pub fn make_nondecreasing<const N: usize>(arr: &mut [Score; N]) {
-        for i in 1..N {
-            arr[i].mg = arr[i].mg.max(arr[i - 1].mg);
-            arr[i].eg = arr[i].eg.max(arr[i - 1].eg);
-        }
-    }
-
-    pub fn make_nonincreasing<const N: usize>(arr: &mut [Score; N]) {
-        for i in 1..N {
-            arr[i].mg = arr[i].mg.min(arr[i - 1].mg);
-            arr[i].eg = arr[i].eg.min(arr[i - 1].eg);
-        }
-    }
-
-    fn normalise_mean_zero<const N: usize>(base: &mut Score, arr: &mut [Score; N]) {
-        let mean_mg = arr.iter().map(|s| s.mg).sum::<i32>() / N as i32;
-        let mean_eg = arr.iter().map(|s| s.eg).sum::<i32>() / N as i32;
-
-        for s in arr {
-            s.mg -= mean_mg;
-            s.eg -= mean_eg;
-        }
-
-        base.mg += mean_mg;
-        base.eg += mean_eg;
-    }
-
-    pub fn project(&mut self) {
-        Self::make_nondecreasing(&mut self.passed_pawn);
-
-        Self::make_nondecreasing(&mut self.knight_adj);
-        Self::make_nonincreasing(&mut self.rook_adj);
+        make_nondecreasing(&mut self.knight_adj);
+        make_nonincreasing(&mut self.rook_adj);
 
         self.tripled_pawns.mg = self.tripled_pawns.mg.min(self.doubled_pawns.mg);
         self.tripled_pawns.eg = self.tripled_pawns.eg.min(self.doubled_pawns.eg);
@@ -611,17 +619,21 @@ impl Params {
 
         // Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores
         // Results in piece values more accurately representing their true value
-        Self::normalise_mean_zero(&mut self.knight_value, &mut self.knight_adj);
-        Self::normalise_mean_zero(&mut self.rook_value, &mut self.rook_adj);
+        normalise_mean_zero(&mut self.knight_value, &mut self.knight_adj);
+        normalise_mean_zero(&mut self.rook_value, &mut self.rook_adj);
 
-        Self::normalise_mean_zero(&mut self.knight_value, &mut self.knight_mobility);
-        Self::normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_mobility);
-        Self::normalise_mean_zero(&mut self.rook_value, &mut self.rook_mobility);
-        Self::normalise_mean_zero(&mut self.queen_value, &mut self.queen_mobility);
+        normalise_mean_zero(&mut self.knight_value, &mut self.knight_mobility);
+        normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_mobility);
+        normalise_mean_zero(&mut self.rook_value, &mut self.rook_mobility);
+        normalise_mean_zero(&mut self.queen_value, &mut self.queen_mobility);
 
-        Self::normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_same_colour_pawns);
+        normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_same_colour_pawns);
 
         self.clamp();
+    }
+
+    fn default() -> Params {
+        DEFAULT_PARAMS
     }
 }
 
@@ -714,4 +726,218 @@ pub const PARAM_BOUNDS: [ParamBounds; 34] = [
     b!(-75, 75),   // bishop mobility
     b!(-50, 50),   // rook mobility
     b!(-50, 50),   // queen mobility
+];
+
+pub const LAZY_PIECE_VALUES: [Score; 5] = [
+    s!(82, 94),
+    s!(337, 281),
+    s!(365, 297),
+    s!(477, 512),
+    s!(1025, 936),
+];
+
+// Lazy PSTs
+#[rustfmt::skip]
+const LAZY_PAWN_PST: PST = [
+    s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0),
+    s!(  98,  178), s!( 134,  173), s!(  61,  158), s!(  95,  134), s!(  68,  147), s!( 126,  132), s!(  34,  165), s!( -11,  187),
+    s!(  -6,   94), s!(   7,  100), s!(  26,   85), s!(  31,   67), s!(  65,   56), s!(  56,   53), s!(  25,   82), s!( -20,   84),
+    s!( -14,   32), s!(  13,   24), s!(   6,   13), s!(  21,    5), s!(  23,   -2), s!(  12,    4), s!(  17,   17), s!( -23,   17),
+    s!( -27,   13), s!(  -2,    9), s!(  -5,   -3), s!(  12,   -7), s!(  17,   -7), s!(   6,   -8), s!(  10,    3), s!( -25,   -1),
+    s!( -26,    4), s!(  -4,    7), s!(  -4,   -6), s!( -10,    1), s!(   3,    0), s!(   3,   -5), s!(  33,   -1), s!( -12,   -8),
+    s!( -35,   13), s!(  -1,    8), s!( -20,    8), s!( -23,   10), s!( -15,   13), s!(  24,    0), s!(  38,    2), s!( -22,   -7),
+    s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0), s!(   0,    0),
+];
+#[rustfmt::skip]
+const LAZY_KNIGHT_PST: PST = [
+    s!(-167,  -58), s!( -89,  -38), s!( -34,  -13), s!( -49,  -28), s!(  61,  -31), s!( -97,  -27), s!( -15,  -63), s!(-107,  -99),
+    s!( -73,  -25), s!( -41,   -8), s!(  72,  -25), s!(  36,   -2), s!(  23,   -9), s!(  62,  -25), s!(   7,  -24), s!( -17,  -52),
+    s!( -47,  -24), s!(  60,  -20), s!(  37,   10), s!(  65,    9), s!(  84,   -1), s!( 129,   -9), s!(  73,  -19), s!(  44,  -41),
+    s!(  -9,  -17), s!(  17,    3), s!(  19,   22), s!(  53,   22), s!(  37,   22), s!(  69,   11), s!(  18,    8), s!(  22,  -18),
+    s!( -13,  -18), s!(   4,   -6), s!(  16,   16), s!(  13,   25), s!(  28,   16), s!(  19,   17), s!(  21,    4), s!(  -8,  -18),
+    s!( -23,  -23), s!(  -9,   -3), s!(  12,   -1), s!(  10,   15), s!(  19,   10), s!(  17,   -3), s!(  25,  -20), s!( -16,  -22),
+    s!( -29,  -42), s!( -53,  -20), s!( -12,  -10), s!(  -3,   -5), s!(  -1,   -2), s!(  18,  -20), s!( -14,  -23), s!( -19,  -44),
+    s!(-105,  -29), s!( -21,  -51), s!( -58,  -23), s!( -33,  -15), s!( -17,  -22), s!( -28,  -18), s!( -19,  -50), s!( -23,  -64)
+];
+#[rustfmt::skip]
+const LAZY_BISHOP_PST: PST = [
+    s!( -29,  -14), s!(   4,  -21), s!( -82,  -11), s!( -37,   -8), s!( -25,   -7), s!( -42,   -9), s!(   7,  -17), s!(  -8,  -24),
+    s!( -26,   -8), s!(  16,   -4), s!( -18,    7), s!( -13,  -12), s!(  30,   -3), s!(  59,  -13), s!(  18,   -4), s!( -47,  -14),
+    s!( -16,    2), s!(  37,   -8), s!(  43,    0), s!(  40,   -1), s!(  35,   -2), s!(  50,    6), s!(  37,    0), s!(  -2,    4),
+    s!(  -4,   -3), s!(   5,    9), s!(  19,   12), s!(  50,    9), s!(  37,   14), s!(  37,   10), s!(   7,    3), s!(  -2,    2),
+    s!(  -6,   -6), s!(  13,    3), s!(  13,   13), s!(  26,   19), s!(  34,    7), s!(  12,   10), s!(  10,   -3), s!(   4,   -9),
+    s!(   0,  -12), s!(  15,   -3), s!(  15,    8), s!(  15,   10), s!(  14,   13), s!(  27,    3), s!(  18,   -7), s!(  10,  -15),
+    s!(   4,  -14), s!(  15,  -18), s!(  16,   -7), s!(   0,   -1), s!(   7,    4), s!(  21,   -9), s!(  33,  -15), s!(   1,  -27),
+    s!( -33,  -23), s!(  -3,   -9), s!( -14,  -23), s!( -21,   -5), s!( -13,   -9), s!( -12,  -16), s!( -39,   -5), s!( -21,  -17)
+];
+#[rustfmt::skip]
+const LAZY_ROOK_PST: PST = [
+    s!(  32,   13), s!(  42,   10), s!(  32,   18), s!(  51,   15), s!(  63,   12), s!(   9,   12), s!(  31,    8), s!(  43,    5),
+    s!(  27,   11), s!(  32,   13), s!(  58,   13), s!(  62,   11), s!(  80,   -3), s!(  67,    3), s!(  26,    8), s!(  44,    3),
+    s!(  -5,    7), s!(  19,    7), s!(  26,    7), s!(  36,    5), s!(  17,    4), s!(  45,   -3), s!(  61,   -5), s!(  16,   -3),
+    s!( -24,    4), s!( -11,    3), s!(   7,   13), s!(  26,    1), s!(  24,    2), s!(  35,    1), s!(  -8,   -1), s!( -20,    2),
+    s!( -36,    3), s!( -26,    5), s!( -12,    8), s!(  -1,    4), s!(   9,   -5), s!(  -7,   -6), s!(   6,   -8), s!( -23,  -11),
+    s!( -45,   -4), s!( -25,    0), s!( -16,   -5), s!( -17,   -1), s!(   3,   -7), s!(   0,  -12), s!(  -5,   -8), s!( -33,  -16),
+    s!( -44,   -6), s!( -16,   -6), s!( -20,    0), s!(  -9,    2), s!(  -1,   -9), s!(  11,   -9), s!(  -6,  -11), s!( -71,   -3),
+    s!( -19,   -9), s!( -13,    2), s!(   1,    3), s!(  17,   -1), s!(  16,   -5), s!(   7,  -13), s!( -37,    4), s!( -26,  -20)
+];
+#[rustfmt::skip]
+const LAZY_QUEEN_PST: PST = [
+    s!( -28,   -9), s!(   0,   22), s!(  29,   22), s!(  12,   27), s!(  59,   27), s!(  44,   19), s!(  43,   10), s!(  45,   20),
+    s!( -24,  -17), s!( -39,   20), s!(  -5,   32), s!(   1,   41), s!( -16,   58), s!(  57,   25), s!(  28,   30), s!(  54,    0),
+    s!( -13,  -20), s!( -17,    6), s!(   7,    9), s!(   8,   49), s!(  29,   47), s!(  56,   35), s!(  47,   19), s!(  57,    9),
+    s!( -27,    3), s!( -27,   22), s!( -16,   24), s!( -16,   45), s!(  -1,   57), s!(  17,   40), s!(  -2,   57), s!(   1,   36),
+    s!(  -9,  -18), s!( -26,   28), s!(  -9,   19), s!( -10,   47), s!(  -2,   31), s!(  -4,   34), s!(   3,   39), s!(  -3,   23),
+    s!( -14,  -16), s!(   2,  -27), s!( -11,   15), s!(  -2,    6), s!(  -5,    9), s!(   2,   17), s!(  14,   10), s!(   5,    5),
+    s!( -35,  -22), s!(  -8,  -23), s!(  11,  -30), s!(   2,  -16), s!(   8,  -16), s!(  15,  -23), s!(  -3,  -36), s!(   1,  -32),
+    s!(  -1,  -33), s!( -18,  -28), s!(  -9,  -22), s!(  10,  -43), s!( -15,   -5), s!( -25,  -32), s!( -31,  -20), s!( -50,  -41)
+];
+#[rustfmt::skip]
+const LAZY_KING_PST: PST = [
+    s!( -65,  -74), s!(  23,  -35), s!(  16,  -18), s!( -15,  -18), s!( -56,  -11), s!( -34,   15), s!(   2,    4), s!(  13,  -17),
+    s!(  29,  -12), s!(  -1,   17), s!( -20,   14), s!(  -7,   17), s!(  -8,   17), s!(  -4,   38), s!( -38,   23), s!( -29,   11),
+    s!(  -9,   10), s!(  24,   17), s!(   2,   23), s!( -16,   15), s!( -20,   20), s!(   6,   45), s!(  22,   44), s!( -22,   13),
+    s!( -17,   -8), s!( -20,   22), s!( -12,   24), s!( -27,   27), s!( -30,   26), s!( -25,   33), s!( -14,   26), s!( -36,    3),
+    s!( -49,  -18), s!(  -1,   -4), s!( -27,   21), s!( -39,   24), s!( -46,   27), s!( -44,   23), s!( -33,    9), s!( -51,  -11),
+    s!( -14,  -19), s!( -14,   -3), s!( -22,   11), s!( -46,   21), s!( -44,   23), s!( -30,   16), s!( -15,    7), s!( -27,   -9),
+    s!(   1,  -27), s!(   7,  -11), s!(  -8,    4), s!( -64,   13), s!( -43,   14), s!( -16,    4), s!(   9,   -5), s!(   8,  -17),
+    s!( -15,  -53), s!(  36,  -34), s!(  12,  -21), s!( -54,  -11), s!(   8,  -28), s!( -28,  -14), s!(  24,  -24), s!(  14,  -43)
+];
+
+#[derive(Copy, Clone, Debug)]
+pub struct LazyParams {
+    pub pawn_value: Score,
+    pub knight_value: Score,
+    pub bishop_value: Score,
+    pub rook_value: Score,
+    pub queen_value: Score,
+
+    pub pawn_pst: PST,
+    pub knight_pst: PST,
+    pub bishop_pst: PST,
+    pub rook_pst: PST,
+    pub queen_pst: PST,
+    pub king_pst: PST,
+}
+
+impl TunableParams for LazyParams {
+    fn pack(&self) -> Vec<i32> {
+        let mut out = Vec::new();
+
+        push_pawn_pst(&mut out, &self.pawn_pst);
+        push_score_array(&mut out, &self.knight_pst);
+        push_score_array(&mut out, &self.bishop_pst);
+        push_score_array(&mut out, &self.rook_pst);
+        push_score_array(&mut out, &self.queen_pst);
+        push_score_array(&mut out, &self.king_pst);
+
+        push_score(&mut out, self.pawn_value);
+        push_score(&mut out, self.knight_value);
+        push_score(&mut out, self.bishop_value);
+        push_score(&mut out, self.rook_value);
+        push_score(&mut out, self.queen_value);
+
+        out
+    }
+
+    fn unpack(values: &[i32]) -> Self {
+        let mut it = values.iter().copied();
+
+        let params = Self {
+            pawn_pst: next_pawn_pst(&mut it, &LAZY_PAWN_PST),
+            knight_pst: next_score_array(&mut it),
+            bishop_pst: next_score_array(&mut it),
+            rook_pst: next_score_array(&mut it),
+            queen_pst: next_score_array(&mut it),
+            king_pst: next_score_array(&mut it),
+
+            pawn_value: next_score(&mut it),
+            knight_value: next_score(&mut it),
+            bishop_value: next_score(&mut it),
+            rook_value: next_score(&mut it),
+            queen_value: next_score(&mut it),
+        };
+
+        debug_assert!(it.next().is_none());
+        params
+    }
+
+    fn flat_bounds() -> Vec<ParamBounds> {
+        let mut out = Vec::new();
+
+        let [
+            pawn_pst,
+            knight_pst,
+            bishop_pst,
+            rook_pst,
+            queen_pst,
+            king_pst,
+            pawn_value,
+            knight_value,
+            bishop_value,
+            rook_value,
+            queen_value,
+        ] = LAZY_PARAM_BOUNDS;
+
+        push_pawn_pst_bounds(&mut out, pawn_pst);
+        push_score_array_bounds::<64>(&mut out, knight_pst);
+        push_score_array_bounds::<64>(&mut out, bishop_pst);
+        push_score_array_bounds::<64>(&mut out, rook_pst);
+        push_score_array_bounds::<64>(&mut out, queen_pst);
+        push_score_array_bounds::<64>(&mut out, king_pst);
+
+        push_score_bounds(&mut out, pawn_value);
+        push_score_bounds(&mut out, knight_value);
+        push_score_bounds(&mut out, bishop_value);
+        push_score_bounds(&mut out, rook_value);
+        push_score_bounds(&mut out, queen_value);
+
+        out
+    }
+
+    fn project(&mut self) {
+        // Material value
+        self.bishop_value.mg = self.bishop_value.mg.max(self.knight_value.mg - 20);
+        self.bishop_value.eg = self.bishop_value.eg.max(self.knight_value.eg - 20);
+
+        self.rook_value.mg = self.rook_value.mg.max(self.bishop_value.mg + 100);
+        self.rook_value.eg = self.rook_value.eg.max(self.bishop_value.eg + 100);
+
+        self.clamp();
+    }
+
+    fn default() -> Self {
+        DEFAULT_LAZY_PARAMS
+    }
+}
+
+pub const DEFAULT_LAZY_PARAMS: LazyParams = LazyParams {
+    pawn_value: LAZY_PIECE_VALUES[0],
+    knight_value: LAZY_PIECE_VALUES[1],
+    bishop_value: LAZY_PIECE_VALUES[2],
+    rook_value: LAZY_PIECE_VALUES[3],
+    queen_value: LAZY_PIECE_VALUES[4],
+
+    pawn_pst: LAZY_PAWN_PST,
+    knight_pst: LAZY_KNIGHT_PST,
+    bishop_pst: LAZY_BISHOP_PST,
+    rook_pst: LAZY_ROOK_PST,
+    queen_pst: LAZY_QUEEN_PST,
+    king_pst: LAZY_KING_PST,
+};
+
+#[rustfmt::skip]
+pub const LAZY_PARAM_BOUNDS: [ParamBounds; 11] = [
+    b!(-50, 200),  // pawn pst
+    b!(-200, 200), // knight pst
+    b!(-100, 100), // bishop pst
+    b!(-100, 100), // rook pst
+    b!(-200, 200), // queen pst
+    b!(-200, 200), // king pst
+
+    b!(70, 100),   // pawn value
+    b!(240, 360),  // knight value
+    b!(250, 370),  // bishop value
+    b!(400, 560),  // rook value
+    b!(850, 1100), // queen value
 ];

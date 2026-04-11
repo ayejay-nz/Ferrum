@@ -3,7 +3,7 @@ use std::ops::{Div, Mul};
 use crate::{
     bitboard::{Bitboard, bitboards},
     position::Position,
-    tune::{DEFAULT_PARAMS, Params},
+    tune::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, Params},
     types::{Black, Colour, Direction, Piece, Side, Square, White},
 };
 
@@ -423,6 +423,113 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
 
     evaluate_king_safety::<White>(pos, &mut score, params);
     evaluate_king_safety::<Black>(pos, &mut score, params);
+
+    taper(score, phase, pos.side_to_move)
+}
+
+fn lazy_piece_terms<S: Side>(
+    mut bb: Bitboard,
+    value: Option<Score>,
+    pst: &[Score; 64],
+    score: &mut Score,
+) {
+    // Add (non-king) piece values to score
+    if let Some(value) = value {
+        score.add::<S>(value * bb.bit_count() as i32);
+    }
+
+    // Add PST weights
+    while !bb.is_empty() {
+        let sq = relative_square::<S>(bb.pop_lsb());
+        score.add::<S>(pst[sq]);
+    }
+}
+
+pub fn lazy_evaluate(pos: &Position) -> Eval {
+    lazy_evaluate_with(pos, &DEFAULT_LAZY_PARAMS)
+}
+
+pub fn lazy_evaluate_with(pos: &Position, params: &LazyParams) -> Eval {
+    let mut score = Score::default();
+    let phase = game_phase(pos);
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::Pawn.idx()],
+        Some(params.pawn_value),
+        &params.pawn_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::Pawn.idx()],
+        Some(params.pawn_value),
+        &params.pawn_pst,
+        &mut score,
+    );
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::Knight.idx()],
+        Some(params.knight_value),
+        &params.knight_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::Knight.idx()],
+        Some(params.knight_value),
+        &params.knight_pst,
+        &mut score,
+    );
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::Bishop.idx()],
+        Some(params.bishop_value),
+        &params.bishop_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::Bishop.idx()],
+        Some(params.bishop_value),
+        &params.bishop_pst,
+        &mut score,
+    );
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::Rook.idx()],
+        Some(params.rook_value),
+        &params.rook_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::Rook.idx()],
+        Some(params.rook_value),
+        &params.rook_pst,
+        &mut score,
+    );
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::Queen.idx()],
+        Some(params.queen_value),
+        &params.queen_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::Queen.idx()],
+        Some(params.queen_value),
+        &params.queen_pst,
+        &mut score,
+    );
+
+    lazy_piece_terms::<White>(
+        pos.pieces[White::IDX][Piece::King.idx()],
+        None,
+        &params.king_pst,
+        &mut score,
+    );
+    lazy_piece_terms::<Black>(
+        pos.pieces[Black::IDX][Piece::King.idx()],
+        None,
+        &params.king_pst,
+        &mut score,
+    );
 
     taper(score, phase, pos.side_to_move)
 }

@@ -5,25 +5,29 @@ use std::{
 };
 
 use crate::{
-    tune::{DEFAULT_PARAMS, ParamBounds, Params},
+    evaluate::{evaluate_with, lazy_evaluate_with},
+    tune::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, ParamBounds, Params, TunableParams},
     tuning::{
         dataset::load_epd_samples,
-        emit::{dump_params, fmt_score},
+        emit::{dump_full_params, dump_lazy_params, fmt_score},
         texel::{fit_k, loss},
         types::Sample,
     },
 };
 
-fn calibrate_a(
-    samples: &[Sample],
+fn calibrate_a<P, F>(
     theta: &[i32],
-    k: f64,
     c: f64,
     a_cap: f64,
     alpha: f64,
     desired_first_step: f64,
     bounds: &[ParamBounds],
-) -> f64 {
+    loss_fn: F,
+) -> f64
+where
+    P: TunableParams,
+    F: Fn(&P) -> f64,
+{
     let trials = 8;
     let mut grad_sum = 0.0;
     let mut grad_n = 0usize;
@@ -43,13 +47,13 @@ fn calibrate_a(
             minus[i] = (minus[i] - c_i * delta[i]).clamp(bounds[i].min, bounds[i].max);
         }
 
-        let mut params_plus = Params::unpack(&plus);
-        let mut params_minus = Params::unpack(&minus);
+        let mut params_plus = P::unpack(&plus);
+        let mut params_minus = P::unpack(&minus);
         params_plus.project();
         params_minus.project();
 
-        let loss_plus = loss(samples, &params_plus, k);
-        let loss_minus = loss(samples, &params_minus, k);
+        let loss_plus = loss_fn(&params_plus);
+        let loss_minus = loss_fn(&params_minus);
 
         for i in 0..theta.len() {
             let g_i = (loss_plus - loss_minus) / (2.0 * c * delta[i] as f64);
@@ -67,10 +71,73 @@ fn calibrate_a(
     desired_first_step * (a_cap + 1.0).powf(alpha) / mean_abs_grad
 }
 
-pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
+pub fn tune_full(path: &Path, stop: &AtomicBool) -> Result<()> {
     // let samples = load_samples(path).unwrap();
     let samples = load_epd_samples(path)?;
 
+    // Fitted k value
+    // let k = fit_k(&samples, &DEFAULT_PARAMS, &evaluate_with);
+    let k = 1.377;
+    println!("fitted k value: {k}");
+
+    let loss_fn = |p: &Params| loss(&samples, p, &evaluate_with, k);
+
+    let describe = |p: &Params| {
+        format!(
+            "pawn: {}, knight: {}, bishop: {}, rook: {}, queen: {}",
+            fmt_score(p.pawn_value),
+            fmt_score(p.knight_value),
+            fmt_score(p.bishop_value),
+            fmt_score(p.rook_value),
+            fmt_score(p.queen_value),
+        )
+    };
+
+    let dump = dump_full_params;
+
+    optimise(&samples, stop, loss_fn, describe, dump)
+}
+
+pub fn tune_lazy(path: &Path, stop: &AtomicBool) -> Result<()> {
+    // let samples = load_samples(path).unwrap();
+    let samples = load_epd_samples(path)?;
+
+    // Fitted k value
+    // let k = fit_k(&samples, &DEFAULT_LAZY_PARAMS, &lazy_evaluate_with);
+    let k = 1.662;
+    println!("fitted k value: {k}");
+
+    let loss_fn = |p: &LazyParams| loss(&samples, p, &lazy_evaluate_with, k);
+
+    let describe = |p: &LazyParams| {
+        format!(
+            "pawn: {}, knight: {}, bishop: {}, rook: {}, queen: {}",
+            fmt_score(p.pawn_value),
+            fmt_score(p.knight_value),
+            fmt_score(p.bishop_value),
+            fmt_score(p.rook_value),
+            fmt_score(p.queen_value),
+        )
+    };
+
+    let dump = dump_lazy_params;
+
+    optimise(&samples, stop, loss_fn, describe, dump)
+}
+
+fn optimise<P, F, G, H>(
+    samples: &[Sample],
+    stop: &AtomicBool,
+    loss_fn: F,
+    describe: G,
+    dump: H,
+) -> Result<()>
+where
+    P: TunableParams,
+    F: Fn(&P) -> f64 + Copy,
+    G: Fn(&P) -> String,
+    H: Fn(&str, &[i32], f64),
+{
     if samples.is_empty() {
         return Err(Error::new(ErrorKind::InvalidData, "empty tuning dataset"));
     }
@@ -81,23 +148,18 @@ pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
     let c = 2.0;
     let A = 0.1 * iterations as f64;
 
-    // Fitted k value
-    // let k = fit_k(&samples, &DEFAULT_PARAMS);
-    let k = 1.377;
-    println!("fitted k value: {k}");
+    let bounds = P::flat_bounds();
 
-    let theta = DEFAULT_PARAMS.pack();
-    let bounds = Params::flat_bounds();
-    debug_assert_eq!(theta.len(), bounds.len());
-
-    let mut params = DEFAULT_PARAMS;
+    let mut params = P::default();
     params.project();
     let mut theta = params.pack();
 
-    let a = calibrate_a(&samples, &theta, k, c, A, alpha, 1.0, &bounds);
+    debug_assert_eq!(theta.len(), bounds.len());
+
+    let a = calibrate_a(&theta, c, A, alpha, 1.0, &bounds, loss_fn);
     println!("a value: {a}");
 
-    let baseline_loss = loss(&samples, &params, k);
+    let baseline_loss = loss_fn(&params);
 
     let mut best_theta = theta.clone();
     let mut current_loss = baseline_loss;
@@ -127,9 +189,9 @@ pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
         }
 
         // Apply projection to theta to ensure values are logical
-        let mut params = Params::unpack(&theta);
-        let mut params_plus = Params::unpack(&plus);
-        let mut params_minus = Params::unpack(&minus);
+        let mut params = P::unpack(&theta);
+        let mut params_plus = P::unpack(&plus);
+        let mut params_minus = P::unpack(&minus);
         params.project();
         params_plus.project();
         params_minus.project();
@@ -137,13 +199,13 @@ pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
         minus = params_minus.pack();
         theta = params.pack();
 
-        let loss_plus = loss(&samples, &Params::unpack(&plus), k);
+        let loss_plus = loss_fn(&P::unpack(&plus));
         if stop.load(Ordering::Relaxed) {
             println!("Interrupted at iter={t} after loss_plus");
             break;
         }
 
-        let loss_minus = loss(&samples, &Params::unpack(&minus), k);
+        let loss_minus = loss_fn(&P::unpack(&minus));
         if stop.load(Ordering::Relaxed) {
             println!("Interrupted at iter={t} after loss_minus");
             break;
@@ -156,11 +218,11 @@ pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
         }
 
         // Apply project to theta to ensure values are logical
-        let mut params = Params::unpack(&theta);
+        let mut params = P::unpack(&theta);
         params.project();
         theta = params.pack();
 
-        current_loss = loss(&samples, &params, k);
+        current_loss = loss_fn(&params);
 
         if current_loss < best_loss {
             best_loss = current_loss;
@@ -168,20 +230,13 @@ pub fn tune(path: &Path, stop: &AtomicBool) -> Result<()> {
         }
 
         if t % 100 == 0 {
-            println!(
-                "pawn: {}, knight: {}, bishop: {}, rook: {}, queen: {}",
-                fmt_score(params.pawn_value),
-                fmt_score(params.knight_value),
-                fmt_score(params.bishop_value),
-                fmt_score(params.rook_value),
-                fmt_score(params.queen_value),
-            );
+            println!("{}", describe(&params));
             println!("iter={t}, current_loss={current_loss}, best_loss={best_loss}");
         }
     }
 
-    dump_params("current", &theta, current_loss);
-    dump_params("best", &best_theta, best_loss);
+    dump("current", &theta, current_loss);
+    dump("best", &best_theta, best_loss);
 
     Ok(())
 }

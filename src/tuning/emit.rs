@@ -1,4 +1,7 @@
-use crate::{evaluate::Score, tune::Params};
+use crate::{
+    evaluate::Score,
+    tune::{LazyParams, Params, TunableParams},
+};
 
 pub fn fmt_score(s: Score) -> String {
     format!("s!({}, {})", s.mg, s.eg)
@@ -41,7 +44,7 @@ fn fmt_pst(name: &str, pst: &[Score; 64]) -> String {
     out
 }
 
-pub fn dump_params(label: &str, theta: &[i32], loss: f64) {
+pub fn dump_full_params(label: &str, theta: &[i32], loss: f64) {
     let params = Params::unpack(theta);
 
     println!("==================================================");
@@ -177,4 +180,33 @@ pub fn dump_params(label: &str, theta: &[i32], loss: f64) {
     println!("{}", fmt_pst("ROOK_PST", &params.rook_pst));
     println!("{}", fmt_pst("QUEEN_PST", &params.queen_pst));
     println!("{}", fmt_pst("KING_PST", &params.king_pst));
+}
+
+pub fn dump_lazy_params(label: &str, theta: &[i32], loss: f64) {
+    let params = LazyParams::unpack(theta);
+
+    println!("==================================================");
+    println!("{label}_loss = {loss}");
+    println!("{label}_theta = {:?}", theta);
+    println!("--------------------------------------------------");
+
+    println!(
+        "pub const LAZY_PIECE_VALUES: [Score; 5] = {};",
+        fmt_score_array(&[
+            params.pawn_value,
+            params.knight_value,
+            params.bishop_value,
+            params.rook_value,
+            params.queen_value
+        ]),
+    );
+    println!();
+
+    println!("// Lazy PSTs");
+    println!("{}", fmt_pst("LAZY_PAWN_PST", &params.pawn_pst));
+    println!("{}", fmt_pst("LAZY_KNIGHT_PST", &params.knight_pst));
+    println!("{}", fmt_pst("LAZY_BISHOP_PST", &params.bishop_pst));
+    println!("{}", fmt_pst("LAZY_ROOK_PST", &params.rook_pst));
+    println!("{}", fmt_pst("LAZY_QUEEN_PST", &params.queen_pst));
+    println!("{}", fmt_pst("LAZY_KING_PST", &params.king_pst));
 }
