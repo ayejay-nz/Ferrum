@@ -551,6 +551,17 @@ impl Params {
         debug_assert_eq!(out.len(), DEFAULT_PARAMS.pack().len());
         out
     }
+
+    pub fn clamp(&mut self) {
+        let mut theta = self.pack();
+        let bounds = Self::flat_bounds();
+
+        for i in 0..theta.len() {
+            theta[i] = theta[i].clamp(bounds[i].min, bounds[i].max);
+        }
+
+        *self = Self::unpack(&theta);
+    }
 }
 
 pub const DEFAULT_PARAMS: Params = Params {
@@ -635,11 +646,11 @@ pub const PARAM_BOUNDS: [ParamBounds; 34] = [
     b!(-200, 20),  // king ring attacks
     b!(-50, 0),    // enemy pawn distance from backrank
 
-    b!(-50, 50),   // knight adj
-    b!(-50, 50),   // rook adj
+    b!(-60, 60),   // knight adj
+    b!(-60, 60),   // rook adj
 
-    b!(-75, 50),   // knight mobility
-    b!(-75, 30),   // bishop mobility
-    b!(-40, 50),   // rook mobility
-    b!(-40, 50),   // queen mobility
+    b!(-75, 75),   // knight mobility
+    b!(-75, 75),   // bishop mobility
+    b!(-50, 50),   // rook mobility
+    b!(-50, 50),   // queen mobility
 ];

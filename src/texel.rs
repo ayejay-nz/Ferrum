@@ -689,8 +689,13 @@ fn calibrate_a(
             minus[i] = (minus[i] - c_i * delta[i]).clamp(bounds[i].min, bounds[i].max);
         }
 
-        let loss_plus = loss(samples, &Params::unpack(&plus), k);
-        let loss_minus = loss(samples, &Params::unpack(&minus), k);
+        let mut params_plus = Params::unpack(&plus);
+        let mut params_minus = Params::unpack(&minus);
+        project_params(&mut params_plus);
+        project_params(&mut params_minus);
+
+        let loss_plus = loss(samples, &params_plus, k);
+        let loss_minus = loss(samples, &params_minus, k);
 
         for i in 0..theta.len() {
             let g_i = (loss_plus - loss_minus) / (2.0 * c * delta[i] as f64);
@@ -766,10 +771,22 @@ fn project_params(params: &mut Params) {
     params.rook_value.mg = params.rook_value.mg.max(params.bishop_value.mg + 100);
     params.rook_value.eg = params.rook_value.eg.max(params.bishop_value.eg + 100);
 
-    // Normalise knight/rook values from adjustment tables
-    // Results in knight/rook piece values more accurately representing their true value
+    // Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores
+    // Results in piece values more accurately representing their true value
     normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
     normalise_mean_zero(&mut params.rook_value, &mut params.rook_adj);
+
+    normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
+    normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
+    normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
+    normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
+
+    normalise_mean_zero(
+        &mut params.bishop_value,
+        &mut params.bishop_same_colour_pawns,
+    );
+
+    params.clamp();
 }
 
 fn dump_params(label: &str, theta: &[i32], loss: f64) {
@@ -976,7 +993,7 @@ pub fn tune_params(path: &Path) {
             minus[i] = minus[i].clamp(bounds[i].min, bounds[i].max);
         }
 
-        // Apply project to theta to ensure values are logical
+        // Apply projection to theta to ensure values are logical
         let mut params = Params::unpack(&theta);
         let mut params_plus = Params::unpack(&plus);
         let mut params_minus = Params::unpack(&minus);
