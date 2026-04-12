@@ -227,6 +227,24 @@ impl TranspositionTable {
             entry.key = key;
         }
     }
+
+    /// Used exclusively during qsearch to update the eval only
+    /// to prevent overwriting data when keys are mismatched
+    pub fn store_eval(&mut self, key: ZKey, eval: i16) {
+        let index = self.index(key);
+        let entry = &mut self.entries[index];
+
+        // If entry is empty, write both key and eval
+        if entry.is_empty() {
+            entry.key = key;
+            entry.eval = eval;
+        }
+        // If entry is the same key, update the eval
+        else if entry.key == key {
+            entry.eval = eval;
+        }
+        // If key is different, dont update eval
+    }
 }
 
 #[cfg(test)]
@@ -386,5 +404,32 @@ mod tests {
         let hit = tt.probe(key).expect("Expected a TT hit");
         assert_eq!(hit.value, 14);
         assert_eq!(hit.node_info.age(), 0);
+    }
+
+    #[test]
+    fn store_eval_policy_is_correct() {
+        let mut tt = TranspositionTable::new(1);
+        let (k1, k2) = colliding_keys(&tt);
+        let eval = 389;
+
+        // Values are correctly inserted
+        tt.store_eval(k1, eval);
+        assert!(tt.probe(k1).is_some());
+        assert_eq!(tt.probe(k1).unwrap().eval, eval);
+
+        // Values are correctly updated
+        let new_eval = -35;
+
+        tt.store_eval(k1, new_eval);
+        assert!(tt.probe(k1).is_some());
+        assert_eq!(tt.probe(k1).unwrap().eval, new_eval);
+
+        // Key collision does not update the eval
+        let bad_eval = 123;
+
+        tt.store_eval(k2, bad_eval);
+        assert!(tt.probe(k1).is_some());
+        assert!(tt.probe(k2).is_none());
+        assert_eq!(tt.probe(k1).unwrap().eval, new_eval);
     }
 }

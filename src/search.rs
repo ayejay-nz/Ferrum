@@ -327,15 +327,7 @@ impl<'a> Searcher<'a> {
 
                 let full = evaluate(pos);
                 tt_eval = Some(full);
-                self.tt.store(
-                    pos.zkey,
-                    0,
-                    Move::NULL,
-                    BoundType::None,
-                    false,
-                    0,
-                    full as i16,
-                );
+                self.tt.store_eval(pos.zkey, full as i16);
             }
 
             // Stand pat result
