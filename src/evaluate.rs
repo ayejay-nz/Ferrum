@@ -348,22 +348,48 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
 
     // King ring attacks
     let occ = pos.occupancy[2];
-    let enemy = S::COLOUR.opposite();
+    let king_ring = bbs.king_attacks(king);
 
-    let mut attacked = 0;
-    let mut king_ring = bbs.king_attacks(king);
-    while !king_ring.is_empty() {
-        let sq = king_ring.pop_lsb();
-        if !pos.attackers_to_by(sq, enemy, occ).is_empty() {
-            attacked += 1;
-        }
+    let enemy_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
+    let enemy_knights = pos.pieces[S::THEM][Piece::Knight.idx()];
+    let enemy_bishops = pos.pieces[S::THEM][Piece::Bishop.idx()];
+    let enemy_rooks = pos.pieces[S::THEM][Piece::Rook.idx()];
+    let enemy_queens = pos.pieces[S::THEM][Piece::Queen.idx()];
+
+    let mut attacked_ring = Bitboard::new(0);
+
+    // Pawns in bulk
+    let pawn_attacks = if S::IS_WHITE {
+        enemy_pawns.shift(Direction::SouthEast) | enemy_pawns.shift(Direction::SouthWest)
+    } else {
+        enemy_pawns.shift(Direction::NorthEast) | enemy_pawns.shift(Direction::NorthWest)
+    };
+    attacked_ring |= pawn_attacks & king_ring;
+
+    let mut knights = enemy_knights;
+    while !knights.is_empty() {
+        let knight = knights.pop_lsb();
+        attacked_ring |= bbs.knight_attacks(knight) & king_ring;
     }
 
-    score.add::<S>(params.king_ring_attacks[attacked.min(4)]);
+    let mut bishops = enemy_bishops | enemy_queens;
+    while !bishops.is_empty() {
+        let bishop = bishops.pop_lsb();
+        attacked_ring |= bbs.bishop_attacks(bishop, occ) & king_ring;
+    }
 
+    let mut rooks = enemy_rooks | enemy_queens;
+    while !rooks.is_empty() {
+        let rook = rooks.pop_lsb();
+        attacked_ring |= bbs.rook_attacks(rook, occ) & king_ring;
+    }
+
+    let attacked = attacked_ring.bit_count().min(4) as usize;
+    score.add::<S>(params.king_ring_attacks[attacked]);
+    
+    // King pawn shield
     let backrank: u8 = if S::IS_WHITE { 0 } else { 7 };
 
-    // King pawn shield
     let mut shield_count = 0;
     let mut pawn_shield =
         own_pawns & (file_bb | file_bb.shift(Direction::East) | file_bb.shift(Direction::West));
