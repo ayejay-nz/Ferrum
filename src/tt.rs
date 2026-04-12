@@ -92,7 +92,7 @@ impl TTEntry {
             mv: Move::NULL,
             node_info: NodeInfo::empty(),
             value: 0,
-            eval: 0,
+            eval: i16::MIN,
         }
     }
 
