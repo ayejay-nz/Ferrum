@@ -9,6 +9,7 @@ use crate::{
 
 pub type Eval = i32;
 pub const INFINITY: Eval = 32001;
+pub const NO_EVAL: i16 = i16::MIN;
 
 const PHASE_WEIGHTS: [u32; 6] = [0, 1, 1, 2, 4, 0];
 
@@ -386,7 +387,7 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
 
     let attacked = attacked_ring.bit_count().min(4) as usize;
     score.add::<S>(params.king_ring_attacks[attacked]);
-    
+
     // King pawn shield
     let backrank: u8 = if S::IS_WHITE { 0 } else { 7 };
 

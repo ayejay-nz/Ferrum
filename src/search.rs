@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::{
     book::probe_opening_book,
-    evaluate::{Eval, INFINITY, evaluate},
+    evaluate::{Eval, INFINITY, NO_EVAL, evaluate, lazy_evaluate},
     movegen::{MoveList, generate_legal},
     movepick::MovePicker,
     position::{Position, StateInfo},
@@ -98,6 +98,8 @@ const KILLER2_BONUS: i32 = 599_000;
 
 const MAX_PLY: usize = 256;
 const MAX_HISTORY: i32 = 16384;
+
+const QS_LAZY_MARGIN: i32 = 150;
 
 #[derive(Copy, Clone)]
 pub struct OrderingTables {
@@ -288,20 +290,56 @@ impl<'a> Searcher<'a> {
         }
 
         let in_check = !pos.checkers.is_empty();
-        let mut state = StateInfo::new();
-        state.set_from_position(pos);
-
         let mut best_score;
+        let mut tt_move = Move::NULL;
 
         // If we are in check, we cannot stand pat and instead must search all evasions.
         // If we are not in check, we search all capturing moves, returning if we get
         // a beta cutoff or have searched all moves (i.e. reached a quiet position)
         if in_check {
             best_score = -INFINITY;
-        } else {
-            // Stand pat
-            best_score = evaluate(pos);
 
+            if let Some(hit) = self.tt.probe(pos.zkey) {
+                tt_move = hit.mv;
+            }
+        } else {
+            let mut tt_eval = None;
+
+            // Probe TT for precomputed eval
+            if let Some(hit) = self.tt.probe(pos.zkey) {
+                // Only care about the TT move if it is noisy
+                let mv = hit.mv;
+                if mv.is_capture() || mv.is_promotion() {
+                    tt_move = mv;
+                }
+
+                if hit.eval != NO_EVAL {
+                    tt_eval = Some(hit.eval as Eval);
+                }
+            }
+
+            if tt_eval.is_none() {
+                // Perform lazy evaluation and return if it exceeds beta + some margin
+                let lazy = lazy_evaluate(pos);
+                if lazy >= beta + QS_LAZY_MARGIN {
+                    return lazy;
+                }
+
+                let full = evaluate(pos);
+                tt_eval = Some(full);
+                self.tt.store(
+                    pos.zkey,
+                    0,
+                    Move::NULL,
+                    BoundType::None,
+                    false,
+                    0,
+                    full as i16,
+                );
+            }
+
+            // Stand pat result
+            best_score = tt_eval.unwrap();
             if best_score >= beta {
                 return best_score;
             }
@@ -309,7 +347,10 @@ impl<'a> Searcher<'a> {
             alpha = alpha.max(best_score);
         }
 
-        let mut mp = MovePicker::new(in_check, Move::NULL, Move::NULL, 0, ply as usize);
+        let mut state = StateInfo::new();
+        state.set_from_position(pos);
+
+        let mut mp = MovePicker::new(in_check, Move::NULL, tt_move, 0, ply as usize);
         let mut move_count = 0;
 
         // Search through all moves until a beta cutoff or none left
@@ -379,10 +420,12 @@ impl<'a> Searcher<'a> {
         let alpha_orig = alpha;
         let beta_orig = beta;
         let mut tt_move = Move::NULL;
+        let mut eval = None;
 
         // Check transposition table
         if let Some(hit) = self.tt.probe(pos.zkey) {
             tt_move = hit.mv;
+            eval = Some(hit.eval as i16);
 
             if hit.depth as i32 >= depth {
                 let bound_type = hit.node_info.bound_type();
@@ -539,6 +582,11 @@ impl<'a> Searcher<'a> {
             value += if value > 0 { ply } else { -ply };
         }
 
+        // Don't recalculate evaluation
+        if eval.is_none() || eval.unwrap() == NO_EVAL {
+            eval = Some(evaluate(pos) as i16);
+        }
+
         self.tt.store(
             pos.zkey,
             depth as u8,
@@ -546,7 +594,7 @@ impl<'a> Searcher<'a> {
             bound,
             false,
             value as i16,
-            evaluate(pos) as i16,
+            eval.unwrap(),
         );
 
         best_score
@@ -560,10 +608,12 @@ impl<'a> Searcher<'a> {
         let mut alpha = -INFINITY;
         let mut beta = INFINITY;
         let mut tt_move = Move::NULL;
+        let mut eval = None;
 
         // Check transposition table
         if let Some(hit) = self.tt.probe(pos.zkey) {
             tt_move = hit.mv;
+            eval = Some(hit.eval);
 
             if hit.depth as i32 >= depth {
                 let bound_type = hit.node_info.bound_type();
@@ -624,6 +674,11 @@ impl<'a> Searcher<'a> {
             };
         }
 
+        // Don't recalculate evaluation
+        if eval.is_none() || eval.unwrap() == NO_EVAL {
+            eval = Some(evaluate(pos) as i16);
+        }
+
         // Store values in transposition table
         // Use full window for now, but will need to stop
         // using Exact when adding aspiration windows
@@ -634,7 +689,7 @@ impl<'a> Searcher<'a> {
             BoundType::Exact,
             false,
             best_score as i16,
-            evaluate(pos) as i16,
+            eval.unwrap(),
         );
 
         SearchResult {
