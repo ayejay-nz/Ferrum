@@ -1,5 +1,7 @@
 use std::{
+    fs::OpenOptions,
     io::{Error, ErrorKind, Result},
+    io::Write,
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -11,7 +13,7 @@ use crate::{
     tune::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, ParamBounds, Params, TunableParams},
     tuning::{
         dataset::load_epd_samples,
-        emit::{dump_full_params, dump_lazy_params, fmt_score},
+        emit::{dump_full_params, dump_lazy_params, fmt_score, render_full_params, render_lazy_params},
         texel::{fit_k, loss},
         types::Sample,
     },
@@ -97,8 +99,9 @@ pub fn tune_full(path: &Path, stop: &AtomicBool) -> Result<()> {
     };
 
     let dump = dump_full_params;
+    let render = render_full_params;
 
-    optimise(&samples, stop, loss_fn, describe, dump)
+    optimise(&samples, stop, loss_fn, describe, dump, render)
 }
 
 pub fn tune_lazy(path: &Path, stop: &AtomicBool) -> Result<()> {
@@ -124,22 +127,25 @@ pub fn tune_lazy(path: &Path, stop: &AtomicBool) -> Result<()> {
     };
 
     let dump = dump_lazy_params;
+    let render = render_lazy_params;
 
-    optimise(&samples, stop, loss_fn, describe, dump)
+    optimise(&samples, stop, loss_fn, describe, dump, render)
 }
 
-fn optimise<P, F, G, H>(
+fn optimise<P, F, G, H, R>(
     samples: &[Sample],
     stop: &AtomicBool,
     loss_fn: F,
     describe: G,
     dump: H,
+    render: R,
 ) -> Result<()>
 where
     P: TunableParams,
     F: Fn(&P) -> f64 + Copy,
     G: Fn(&P) -> String,
     H: Fn(&str, &[i32], f64),
+    R: Fn(&str, &[i32], f64) -> String,
 {
     if samples.is_empty() {
         return Err(Error::new(ErrorKind::InvalidData, "empty tuning dataset"));
@@ -152,6 +158,15 @@ where
     let A = 0.1 * iterations as f64;
 
     let bounds = P::flat_bounds();
+    let snapshot_every = std::env::var("SPSA_SNAPSHOT_EVERY")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(1000);
+    let mut snapshot_file = std::env::var("SPSA_SNAPSHOT_FILE")
+        .ok()
+        .map(|path| OpenOptions::new().create(true).append(true).open(path))
+        .transpose()?;
 
     let mut params = P::default();
     params.project();
@@ -182,6 +197,7 @@ where
         let a_t = a / (t as f64 + 1.0 + A).powf(alpha);
         let c_t = c / (t as f64 + 1.0).powf(gamma);
         let c_t_round = c_t.round() as i32;
+        let should_snapshot = snapshot_file.is_some() && (t + 1) % snapshot_every == 0;
 
         for i in 0..theta.len() {
             delta[i] = if rng.random_bool(0.5) { 1 } else { -1 };
@@ -223,7 +239,7 @@ where
         // Only calculate exact loss every 100 iterations as
         // this saves ~30% of optimisation compute time.
         // Otherwise, use an approximation for current loss
-        if t % 100 == 0 {
+        if t % 100 == 0 || should_snapshot {
             current_loss = loss_fn(&params);
 
             println!("{}", describe(&params));
@@ -237,7 +253,19 @@ where
             best_theta.copy_from_slice(&theta);
         }
 
-        if t % 100 == 0 {}
+        if should_snapshot {
+            let iter = t + 1;
+            let snapshot = format!(
+                "# iter={iter}, current_loss={current_loss}, best_loss={best_loss}\n{}\n\n{}\n\n",
+                render("current", &theta, current_loss),
+                render("best", &best_theta, best_loss)
+            );
+
+            if let Some(file) = &mut snapshot_file {
+                file.write_all(snapshot.as_bytes())?;
+                file.flush()?;
+            }
+        }
     }
 
     dump("current", &theta, current_loss);
