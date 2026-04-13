@@ -390,7 +390,7 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
     let w = params.king_ring_bishop_weight;
     let hits = (bishop_attacks & king_ring).bit_count() as i32;
     mg_units += w.mg * hits;
-    eg_units += w.eg & hits;
+    eg_units += w.eg * hits;
 
     let mut rooks = enemy_rooks;
     let mut rook_attacks = Bitboard::new(0);
