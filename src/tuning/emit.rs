@@ -134,12 +134,34 @@ pub fn dump_full_params(label: &str, theta: &[i32], loss: f64) {
         fmt_score(params.king_shield_missing_pawn)
     );
     println!(
-        "pub const KING_RING_ATTACKS: [Score; 5] = {};",
-        fmt_score_array(&params.king_ring_attacks)
-    );
-    println!(
         "pub const ENEMY_PAWN_DISTANCE_FROM_BACKRANK: [Score; 4] = {};",
         fmt_score_array(&params.enemy_pawn_distance_from_backrank)
+    );
+    println!();
+
+    println!(
+        "pub const KING_RING_PAWN_WEIGHT: Score = {};",
+        fmt_score(params.king_ring_pawn_weight)
+    );
+    println!(
+        "pub const KING_RING_KNIGHT_WEIGHT: Score = {};",
+        fmt_score(params.king_ring_knight_weight)
+    );
+    println!(
+        "pub const KING_RING_BISHOP_WEIGHT: Score = {};",
+        fmt_score(params.king_ring_bishop_weight)
+    );
+    println!(
+        "pub const KING_RING_ROOK_WEIGHT: Score = {};",
+        fmt_score(params.king_ring_rook_weight)
+    );
+    println!(
+        "pub const KING_RING_QUEEN_WEIGHT: Score = {};",
+        fmt_score(params.king_ring_queen_weight)
+    );
+    println!(
+        "pub const KING_RING_ATTACKS: [Score; 24] = {};",
+        fmt_score_array(&params.king_ring_attacks)
     );
     println!();
 

@@ -65,15 +65,41 @@ pub const KING_ON_OPEN_FILE: Score = s!(-61, -7);
 pub const KING_PAWN_SHIELD_DISTANCE: [Score; 4] =
     [s!(15, -35), s!(5, -21), s!(12, -16), s!(-20, 10)];
 pub const KING_SHIELD_MISSING_PAWN: Score = s!(-13, -21);
-pub const KING_RING_ATTACKS: [Score; 5] = [
-    s!(-36, -196),
-    s!(-43, -165),
-    s!(-58, -168),
-    s!(-114, -156),
-    s!(-197, -114),
-];
 pub const ENEMY_PAWN_DISTANCE_FROM_BACKRANK: [Score; 4] =
     [s!(0, -7), s!(-19, -1), s!(-8, -1), s!(-1, -4)];
+
+// King attack ring values
+pub const KING_RING_PAWN_WEIGHT: Score = s!(1, 1);
+pub const KING_RING_KNIGHT_WEIGHT: Score = s!(2, 2);
+pub const KING_RING_BISHOP_WEIGHT: Score = s!(2, 2);
+pub const KING_RING_ROOK_WEIGHT: Score = s!(3, 3);
+pub const KING_RING_QUEEN_WEIGHT: Score = s!(5, 5);
+pub const KING_RING_ATTACKS: [Score; 24] = [
+    s!(5, 5),
+    s!(3, 3),
+    s!(1, 2),
+    s!(1, 1),
+    s!(0, 0),
+    s!(0, 0),
+    s!(0, 0),
+    s!(0, 0),
+    s!(-3, -3),
+    s!(-3, -3),
+    s!(-8, -8),
+    s!(-8, -8),
+    s!(-13, -13),
+    s!(-13, -13),
+    s!(-21, -21),
+    s!(-21, -21),
+    s!(-30, -30),
+    s!(-30, -30),
+    s!(-40, -40),
+    s!(-40, -40),
+    s!(-45, -45),
+    s!(-45, -45),
+    s!(-50, -50),
+    s!(-50, -50),
+];
 
 // Adjustment values based on the number of pawns left
 pub const KNIGHT_ADJ: [Score; 9] = [
@@ -321,6 +347,45 @@ fn normalise_mean_zero<const N: usize>(base: &mut Score, arr: &mut [Score; N]) {
     base.eg += mean_eg;
 }
 
+fn shift_first_bucket_into_range<const N: usize>(arr: &mut [Score; N], lo: i32, hi: i32) {
+    let shift_mg = if arr[0].mg < lo {
+        lo - arr[0].mg
+    } else if arr[0].mg > hi {
+        hi - arr[0].mg
+    } else {
+        0
+    };
+
+    let shift_eg = if arr[0].eg < lo {
+        lo - arr[0].eg
+    } else if arr[0].eg > hi {
+        hi - arr[0].eg
+    } else {
+        0
+    };
+
+    for s in arr {
+        s.mg += shift_mg;
+        s.eg += shift_eg;
+    }
+}
+
+fn limit_subsequent_drop<const N: usize>(arr: &mut [Score; N], max_drop: i32, floor: i32) {
+    for i in 1..N {
+        let min_mg = (arr[i - 1].mg - max_drop).max(floor);
+        let min_eg = (arr[i - 1].eg - max_drop).max(floor);
+
+        arr[i].mg = arr[i].mg.clamp(min_mg, arr[i - 1].mg);
+        arr[i].eg = arr[i].eg.clamp(min_eg, arr[i - 1].eg);
+    }
+}
+
+fn normalise_king_ring(arr: &mut [Score; 24]) {
+    make_nonincreasing(arr);
+    shift_first_bucket_into_range(arr, -10, 20);
+    limit_subsequent_drop(arr, 15, -200);
+}
+
 fn push_score_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
     out.push(b); // mg
     out.push(b); // eg
@@ -397,8 +462,14 @@ pub struct Params {
     pub king_on_semi_open_file: Score,
     pub king_shield_missing_pawn: Score,
     pub king_pawn_shield_distance: [Score; 4],
-    pub king_ring_attacks: [Score; 5],
     pub enemy_pawn_distance_from_backrank: [Score; 4],
+
+    pub king_ring_pawn_weight: Score,
+    pub king_ring_knight_weight: Score,
+    pub king_ring_bishop_weight: Score,
+    pub king_ring_rook_weight: Score,
+    pub king_ring_queen_weight: Score,
+    pub king_ring_attacks: [Score; 24],
 
     pub knight_adj: [Score; 9],
     pub rook_adj: [Score; 9],
@@ -445,8 +516,14 @@ impl TunableParams for Params {
         push_score(&mut out, self.king_on_semi_open_file);
         push_score(&mut out, self.king_shield_missing_pawn);
         push_score_array(&mut out, &self.king_pawn_shield_distance);
-        push_score_array(&mut out, &self.king_ring_attacks);
         push_score_array(&mut out, &self.enemy_pawn_distance_from_backrank);
+
+        push_score(&mut out, self.king_ring_pawn_weight);
+        push_score(&mut out, self.king_ring_knight_weight);
+        push_score(&mut out, self.king_ring_bishop_weight);
+        push_score(&mut out, self.king_ring_rook_weight);
+        push_score(&mut out, self.king_ring_queen_weight);
+        push_score_array(&mut out, &self.king_ring_attacks);
 
         push_score_array(&mut out, &self.knight_adj);
         push_score_array(&mut out, &self.rook_adj);
@@ -495,8 +572,14 @@ impl TunableParams for Params {
             king_on_semi_open_file: next_score(&mut it),
             king_shield_missing_pawn: next_score(&mut it),
             king_pawn_shield_distance: next_score_array(&mut it),
-            king_ring_attacks: next_score_array(&mut it),
             enemy_pawn_distance_from_backrank: next_score_array(&mut it),
+
+            king_ring_pawn_weight: next_score(&mut it),
+            king_ring_knight_weight: next_score(&mut it),
+            king_ring_bishop_weight: next_score(&mut it),
+            king_ring_rook_weight: next_score(&mut it),
+            king_ring_queen_weight: next_score(&mut it),
+            king_ring_attacks: next_score_array(&mut it),
 
             knight_adj: next_score_array(&mut it),
             rook_adj: next_score_array(&mut it),
@@ -541,8 +624,13 @@ impl TunableParams for Params {
             king_on_semi_open_file,
             king_shield_missing_pawn,
             king_pawn_shield_distance,
-            king_ring_attacks,
             enemy_pawn_distance_from_backrank,
+            king_ring_pawn_weight,
+            king_ring_knight_weight,
+            king_ring_bishop_weight,
+            king_ring_rook_weight,
+            king_ring_queen_weight,
+            king_ring_attacks,
             knight_adj,
             rook_adj,
             knight_mobility,
@@ -583,8 +671,14 @@ impl TunableParams for Params {
         push_score_bounds(&mut out, king_on_semi_open_file);
         push_score_bounds(&mut out, king_shield_missing_pawn);
         push_score_array_bounds::<4>(&mut out, king_pawn_shield_distance);
-        push_score_array_bounds::<5>(&mut out, king_ring_attacks);
         push_score_array_bounds::<4>(&mut out, enemy_pawn_distance_from_backrank);
+
+        push_score_bounds(&mut out, king_ring_pawn_weight);
+        push_score_bounds(&mut out, king_ring_knight_weight);
+        push_score_bounds(&mut out, king_ring_bishop_weight);
+        push_score_bounds(&mut out, king_ring_rook_weight);
+        push_score_bounds(&mut out, king_ring_queen_weight);
+        push_score_array_bounds::<24>(&mut out, king_ring_attacks);
 
         push_score_array_bounds::<9>(&mut out, knight_adj);
         push_score_array_bounds::<9>(&mut out, rook_adj);
@@ -594,11 +688,11 @@ impl TunableParams for Params {
         push_score_array_bounds::<15>(&mut out, rook_mobility);
         push_score_array_bounds::<28>(&mut out, queen_mobility);
 
-        debug_assert_eq!(out.len(), DEFAULT_PARAMS.pack().len());
         out
     }
 
     fn project(&mut self) {
+        make_nonincreasing(&mut self.king_ring_attacks);
         make_nondecreasing(&mut self.passed_pawn);
 
         make_nondecreasing(&mut self.knight_adj);
@@ -630,6 +724,8 @@ impl TunableParams for Params {
         normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_same_colour_pawns);
 
         self.clamp();
+
+        normalise_king_ring(&mut self.king_ring_attacks);
     }
 
     fn default() -> Params {
@@ -670,8 +766,14 @@ pub const DEFAULT_PARAMS: Params = Params {
     king_on_semi_open_file: KING_ON_SEMI_OPEN_FILE,
     king_shield_missing_pawn: KING_SHIELD_MISSING_PAWN,
     king_pawn_shield_distance: KING_PAWN_SHIELD_DISTANCE,
-    king_ring_attacks: KING_RING_ATTACKS,
     enemy_pawn_distance_from_backrank: ENEMY_PAWN_DISTANCE_FROM_BACKRANK,
+
+    king_ring_pawn_weight: KING_RING_PAWN_WEIGHT,
+    king_ring_knight_weight: KING_RING_KNIGHT_WEIGHT,
+    king_ring_bishop_weight: KING_RING_BISHOP_WEIGHT,
+    king_ring_rook_weight: KING_RING_ROOK_WEIGHT,
+    king_ring_queen_weight: KING_RING_QUEEN_WEIGHT,
+    king_ring_attacks: KING_RING_ATTACKS,
 
     knight_adj: KNIGHT_ADJ,
     rook_adj: ROOK_ADJ,
@@ -683,7 +785,7 @@ pub const DEFAULT_PARAMS: Params = Params {
 };
 
 #[rustfmt::skip]
-pub const PARAM_BOUNDS: [ParamBounds; 34] = [
+pub const PARAM_BOUNDS: [ParamBounds; 39] = [
     b!(-50, 200),  // pawn pst
     b!(-200, 200), // knight pst
     b!(-100, 100), // bishop pst
@@ -716,8 +818,14 @@ pub const PARAM_BOUNDS: [ParamBounds; 34] = [
     b!(-40, 40),   // king on semi open file
     b!(-75, 0),    // king shield missing pawn
     b!(-40, 40),   // king pawn shield distance
-    b!(-200, 20),  // king ring attacks
     b!(-50, 0),    // enemy pawn distance from backrank
+
+    b!(1, 2),      // king ring pawn weights
+    b!(2, 3),      // king ring knight weights
+    b!(2, 3),      // king ring bishop weights
+    b!(3, 4),      // king ring rook weights
+    b!(4, 5),      // king ring queen weights
+    b!(-200, 20),  // king ring attacks
 
     b!(-60, 60),   // knight adj
     b!(-60, 60),   // rook adj

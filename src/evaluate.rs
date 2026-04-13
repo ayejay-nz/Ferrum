@@ -350,6 +350,8 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
     // King ring attacks
     let occ = pos.occupancy[2];
     let king_ring = bbs.king_attacks(king);
+    let mut mg_units = 0;
+    let mut eg_units = 0;
 
     let enemy_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
     let enemy_knights = pos.pieces[S::THEM][Piece::Knight.idx()];
@@ -357,36 +359,66 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
     let enemy_rooks = pos.pieces[S::THEM][Piece::Rook.idx()];
     let enemy_queens = pos.pieces[S::THEM][Piece::Queen.idx()];
 
-    let mut attacked_ring = Bitboard::new(0);
-
     // Pawns in bulk
     let pawn_attacks = if S::IS_WHITE {
         enemy_pawns.shift(Direction::SouthEast) | enemy_pawns.shift(Direction::SouthWest)
     } else {
         enemy_pawns.shift(Direction::NorthEast) | enemy_pawns.shift(Direction::NorthWest)
     };
-    attacked_ring |= pawn_attacks & king_ring;
+    let w = params.king_ring_pawn_weight;
+    let hits = (pawn_attacks & king_ring).bit_count() as i32;
+    mg_units += w.mg * hits;
+    eg_units += w.eg * hits;
 
     let mut knights = enemy_knights;
+    let mut knight_attacks = Bitboard::new(0);
     while !knights.is_empty() {
         let knight = knights.pop_lsb();
-        attacked_ring |= bbs.knight_attacks(knight) & king_ring;
+        knight_attacks |= bbs.knight_attacks(knight);
     }
+    let w = params.king_ring_knight_weight;
+    let hits = (knight_attacks & king_ring).bit_count() as i32;
+    mg_units += w.mg * hits;
+    eg_units += w.eg * hits;
 
-    let mut bishops = enemy_bishops | enemy_queens;
+    let mut bishops = enemy_bishops;
+    let mut bishop_attacks = Bitboard::new(0);
     while !bishops.is_empty() {
         let bishop = bishops.pop_lsb();
-        attacked_ring |= bbs.bishop_attacks(bishop, occ) & king_ring;
+        bishop_attacks |= bbs.bishop_attacks(bishop, occ);
     }
+    let w = params.king_ring_bishop_weight;
+    let hits = (bishop_attacks & king_ring).bit_count() as i32;
+    mg_units += w.mg * hits;
+    eg_units += w.eg & hits;
 
-    let mut rooks = enemy_rooks | enemy_queens;
+    let mut rooks = enemy_rooks;
+    let mut rook_attacks = Bitboard::new(0);
     while !rooks.is_empty() {
         let rook = rooks.pop_lsb();
-        attacked_ring |= bbs.rook_attacks(rook, occ) & king_ring;
+        rook_attacks |= bbs.rook_attacks(rook, occ);
     }
+    let w = params.king_ring_rook_weight;
+    let hits = (rook_attacks & king_ring).bit_count() as i32;
+    mg_units += w.mg * hits;
+    eg_units += w.eg * hits;
 
-    let attacked = attacked_ring.bit_count().min(4) as usize;
-    score.add::<S>(params.king_ring_attacks[attacked]);
+    let mut queens = enemy_queens;
+    let mut queen_attacks = Bitboard::new(0);
+    while !queens.is_empty() {
+        let queen = queens.pop_lsb();
+        queen_attacks |= bbs.rook_attacks(queen, occ) | bbs.bishop_attacks(queen, occ);
+    }
+    let w = params.king_ring_queen_weight;
+    let hits = (queen_attacks & king_ring).bit_count() as i32;
+    mg_units += w.mg * hits;
+    eg_units += w.eg * hits;
+
+    let attacks_value = Score {
+        mg: params.king_ring_attacks[mg_units.min(23) as usize].mg,
+        eg: params.king_ring_attacks[eg_units.min(23) as usize].eg,
+    };
+    score.add::<S>(attacks_value);
 
     // King pawn shield
     let backrank: u8 = if S::IS_WHITE { 0 } else { 7 };
