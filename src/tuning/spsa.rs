@@ -10,14 +10,14 @@ use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 use crate::{
     evaluate::{evaluate_with, lazy_evaluate_with},
-    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, ParamBounds, Params, TunableParams},
+    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, Params},
     tuning::{
         dataset::load_epd_samples,
         emit::{
             dump_full_params, dump_lazy_params, fmt_score, render_full_params, render_lazy_params,
         },
         texel::{fit_k, loss},
-        types::Sample,
+        types::{ParamBounds, Sample, TunableParams},
     },
 };
 

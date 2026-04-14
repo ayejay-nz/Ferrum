@@ -1,9 +1,6 @@
 use std::array;
 
-use crate::{
-    evaluate::Score,
-    params::{PST, types::ParamBounds},
-};
+use crate::{evaluate::Score, params::PST, tuning::types::ParamBounds};
 
 pub fn push_score(out: &mut Vec<i32>, s: Score) {
     out.push(s.mg);

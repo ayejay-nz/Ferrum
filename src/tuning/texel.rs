@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::cmp::Reverse;
 
 use crate::movegen::{MoveList, generate_legal};
-use crate::params::TunableParams;
+use crate::tuning::types::TunableParams;
 use crate::{
     evaluate::{Eval, INFINITY},
     movegen::generate_legal_noisy,

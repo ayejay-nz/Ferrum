@@ -2,7 +2,8 @@ use std::fmt::Write as _;
 
 use crate::{
     evaluate::Score,
-    params::{LazyParams, PST, Params, TunableParams},
+    params::{LazyParams, PST, Params},
+    tuning::types::TunableParams,
 };
 
 pub fn fmt_score(s: Score) -> String {
