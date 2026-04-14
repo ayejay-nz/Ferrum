@@ -2,7 +2,7 @@ use std::ops::{Div, Mul};
 
 use crate::{
     bitboard::{Bitboard, bitboards},
-    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, Params},
+    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, PST, Params},
     position::Position,
     types::{Black, Colour, Direction, Piece, Side, Square, White},
 };
@@ -486,12 +486,7 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     taper(score, phase, pos.side_to_move)
 }
 
-fn lazy_piece_terms<S: Side>(
-    mut bb: Bitboard,
-    value: Option<Score>,
-    pst: &[Score; 64],
-    score: &mut Score,
-) {
+fn lazy_piece_terms<S: Side>(mut bb: Bitboard, value: Option<Score>, pst: &PST, score: &mut Score) {
     // Add (non-king) piece values to score
     if let Some(value) = value {
         score.add::<S>(value * bb.bit_count() as i32);

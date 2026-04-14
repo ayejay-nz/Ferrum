@@ -1,6 +1,9 @@
 use std::array;
 
-use crate::{evaluate::Score, params::types::ParamBounds};
+use crate::{
+    evaluate::Score,
+    params::{PST, types::ParamBounds},
+};
 
 pub fn push_score(out: &mut Vec<i32>, s: Score) {
     out.push(s.mg);
@@ -13,7 +16,7 @@ pub fn push_score_array<const N: usize>(out: &mut Vec<i32>, arr: &[Score; N]) {
     }
 }
 
-pub fn push_pawn_pst(out: &mut Vec<i32>, pst: &[Score; 64]) {
+pub fn push_pawn_pst(out: &mut Vec<i32>, pst: &PST) {
     for (i, &s) in pst.iter().enumerate() {
         // Skip 1st and 8th rank
         if !(8..56).contains(&i) {
@@ -35,7 +38,7 @@ pub fn next_score_array<const N: usize, I: Iterator<Item = i32>>(it: &mut I) -> 
     array::from_fn(|_| next_score(it))
 }
 
-pub fn next_pawn_pst<I: Iterator<Item = i32>>(it: &mut I, base: &[Score; 64]) -> [Score; 64] {
+pub fn next_pawn_pst<I: Iterator<Item = i32>>(it: &mut I, base: &PST) -> PST {
     let mut pst = *base;
 
     for (i, sq) in pst.iter_mut().enumerate() {

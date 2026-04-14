@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crate::{
     evaluate::Score,
-    params::{LazyParams, Params, TunableParams},
+    params::{LazyParams, PST, Params, TunableParams},
 };
 
 pub fn fmt_score(s: Score) -> String {
@@ -22,10 +22,10 @@ fn fmt_score_array<const N: usize>(arr: &[Score; N]) -> String {
     format!("[{items}]")
 }
 
-fn fmt_pst(name: &str, pst: &[Score; 64]) -> String {
+fn fmt_pst(name: &str, pst: &PST) -> String {
     let mut out = String::new();
     out.push_str("#[rustfmt::skip]\n");
-    out.push_str(&format!("pub const {name}: [Score; 64] = [\n"));
+    out.push_str(&format!("pub const {name}: PST = [\n"));
 
     for row in 0..8 {
         out.push_str("    ");
