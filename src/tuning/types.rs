@@ -1,7 +1,10 @@
 use std::fmt;
 
 use crate::{
-    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LAZY_PAWN_PST, LazyParams, PAWN_PST, Params},
+    params::{
+        DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LAZY_PARAM_COUNT, LAZY_PAWN_PST, LazyParams,
+        PARAM_COUNT, PAWN_PST, Params,
+    },
     position::Position,
     tuning::helpers::*,
 };
@@ -427,7 +430,7 @@ impl TunableParams for LazyParams {
 }
 
 #[rustfmt::skip]
-pub const PARAM_BOUNDS: [ParamBounds; 39] = [
+pub const PARAM_BOUNDS: [ParamBounds; PARAM_COUNT] = [
     b!(-50, 200),  // pawn pst
     b!(-200, 200), // knight pst
     b!(-100, 100), // bishop pst
@@ -479,7 +482,7 @@ pub const PARAM_BOUNDS: [ParamBounds; 39] = [
 ];
 
 #[rustfmt::skip]
-pub const LAZY_PARAM_BOUNDS: [ParamBounds; 11] = [
+pub const LAZY_PARAM_BOUNDS: [ParamBounds; LAZY_PARAM_COUNT] = [
     b!(-50, 200),  // pawn pst
     b!(-200, 200), // knight pst
     b!(-100, 100), // bishop pst

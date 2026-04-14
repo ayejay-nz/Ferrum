@@ -6,6 +6,9 @@ macro_rules! s {
     };
 }
 
+pub const PARAM_COUNT: usize = 39;
+pub const LAZY_PARAM_COUNT: usize = 11;
+
 pub const PIECE_VALUES: [Score; 5] = [
     s!(79, 77),
     s!(359, 349),
