@@ -2,8 +2,8 @@ use std::ops::{Div, Mul};
 
 use crate::{
     bitboard::{Bitboard, bitboards},
+    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, Params},
     position::Position,
-    tune::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, Params},
     types::{Black, Colour, Direction, Piece, Side, Square, White},
 };
 
