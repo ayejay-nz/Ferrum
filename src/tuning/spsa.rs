@@ -1,9 +1,9 @@
 use std::{
     fs::OpenOptions,
-    io::Write,
-    io::{Error, ErrorKind, Result},
+    io::{Error, ErrorKind, Result, Write},
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
@@ -182,7 +182,19 @@ where
         .unwrap_or(1000);
     let mut snapshot_file = std::env::var("SPSA_SNAPSHOT_FILE")
         .ok()
-        .map(|path| OpenOptions::new().create(true).append(true).open(path))
+        .map(|path| {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let snapshot_path = format!("{path}.{ts}.txt");
+
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(snapshot_path)
+        })
         .transpose()?;
 
     let mut params = config.default_params();
