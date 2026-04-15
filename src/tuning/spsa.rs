@@ -17,22 +17,23 @@ use crate::{
             dump_full_params, dump_lazy_params, fmt_score, render_full_params, render_lazy_params,
         },
         texel::{fit_k, loss},
-        types::{ParamBounds, Sample, TunableParams},
+        types::{FullTuningConfig, LazyTuningConfig, ParamMeta, Sample, TuningConfig},
     },
 };
 
-fn calibrate_a<P, F>(
+fn calibrate_a<C, F>(
+    config: &C,
     theta: &[i32],
     c: f64,
     a_cap: f64,
     alpha: f64,
     desired_first_step: f64,
-    bounds: &[ParamBounds],
+    meta: &[ParamMeta],
     loss_fn: F,
 ) -> f64
 where
-    P: TunableParams,
-    F: Fn(&P) -> f64,
+    C: TuningConfig,
+    F: Fn(&C::ParamType) -> f64,
 {
     let trials = 8;
     let mut grad_sum = 0.0;
@@ -47,22 +48,31 @@ where
         let c_i = c.round() as i32;
 
         for i in 0..theta.len() {
+            if !meta[i].active {
+                plus[i] = theta[i];
+                minus[i] = theta[i];
+                continue;
+            }
             delta[i] = if rng.random_bool(0.5) { 1 } else { -1 };
 
             let step = c_i * delta[i];
-            plus[i] = (theta[i] + step).clamp(bounds[i].min, bounds[i].max);
-            minus[i] = (theta[i] - step).clamp(bounds[i].min, bounds[i].max);
+            plus[i] = (theta[i] + step).clamp(meta[i].bounds.min, meta[i].bounds.max);
+            minus[i] = (theta[i] - step).clamp(meta[i].bounds.min, meta[i].bounds.max);
         }
 
-        let mut params_plus = P::unpack(&plus);
-        let mut params_minus = P::unpack(&minus);
-        params_plus.project();
-        params_minus.project();
+        let mut params_plus = C::unpack(&plus);
+        let mut params_minus = C::unpack(&minus);
+        config.project(&mut params_plus);
+        config.project(&mut params_minus);
 
         let loss_plus = loss_fn(&params_plus);
         let loss_minus = loss_fn(&params_minus);
 
         for i in 0..theta.len() {
+            if !meta[i].active {
+                continue;
+            }
+
             let g_i = (loss_plus - loss_minus) / (2.0 * c * delta[i] as f64);
             grad_sum += g_i.abs();
             grad_n += 1;
@@ -79,6 +89,8 @@ where
 }
 
 pub fn tune_full(path: &Path, stop: &AtomicBool) -> Result<()> {
+    let config = FullTuningConfig::default();
+
     // let samples = load_samples(path).unwrap();
     let samples = load_epd_samples(path)?;
 
@@ -103,10 +115,12 @@ pub fn tune_full(path: &Path, stop: &AtomicBool) -> Result<()> {
     let dump = dump_full_params;
     let render = render_full_params;
 
-    optimise(&samples, stop, loss_fn, describe, dump, render)
+    optimise(&config, &samples, stop, loss_fn, describe, dump, render)
 }
 
 pub fn tune_lazy(path: &Path, stop: &AtomicBool) -> Result<()> {
+    let config = LazyTuningConfig::default();
+
     // let samples = load_samples(path).unwrap();
     let samples = load_epd_samples(path)?;
 
@@ -131,10 +145,11 @@ pub fn tune_lazy(path: &Path, stop: &AtomicBool) -> Result<()> {
     let dump = dump_lazy_params;
     let render = render_lazy_params;
 
-    optimise(&samples, stop, loss_fn, describe, dump, render)
+    optimise(&config, &samples, stop, loss_fn, describe, dump, render)
 }
 
-fn optimise<P, F, G, H, R>(
+fn optimise<C, F, G, H, R>(
+    config: &C,
     samples: &[Sample],
     stop: &AtomicBool,
     loss_fn: F,
@@ -143,9 +158,9 @@ fn optimise<P, F, G, H, R>(
     render: R,
 ) -> Result<()>
 where
-    P: TunableParams,
-    F: Fn(&P) -> f64 + Copy,
-    G: Fn(&P) -> String,
+    C: TuningConfig,
+    F: Fn(&C::ParamType) -> f64 + Copy,
+    G: Fn(&C::ParamType) -> String,
     H: Fn(&str, &[i32], f64),
     R: Fn(&str, &[i32], f64) -> String,
 {
@@ -159,7 +174,7 @@ where
     let c = 2.0;
     let A = 0.1 * iterations as f64;
 
-    let bounds = P::flat_bounds();
+    let meta = config.flat_param_meta();
     let snapshot_every = std::env::var("SPSA_SNAPSHOT_EVERY")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -170,13 +185,13 @@ where
         .map(|path| OpenOptions::new().create(true).append(true).open(path))
         .transpose()?;
 
-    let mut params = P::default();
-    params.project();
-    let mut theta = params.pack();
+    let mut params = config.default_params();
+    config.project(&mut params);
+    let mut theta = config.pack(&params);
 
-    debug_assert_eq!(theta.len(), bounds.len());
+    debug_assert_eq!(theta.len(), meta.len());
 
-    let a = calibrate_a(&theta, c, A, alpha, 1.0, &bounds, loss_fn);
+    let a = calibrate_a(config, &theta, c, A, alpha, 0.25, &meta, loss_fn);
     println!("a value: {a}");
 
     let baseline_loss = loss_fn(&params);
@@ -202,18 +217,23 @@ where
         let should_snapshot = snapshot_file.is_some() && (t + 1) % snapshot_every == 0;
 
         for i in 0..theta.len() {
+            if !meta[i].active {
+                plus[i] = theta[i];
+                minus[i] = theta[i];
+                continue;
+            }
             delta[i] = if rng.random_bool(0.5) { 1 } else { -1 };
 
             let step = c_t_round * delta[i];
-            plus[i] = (theta[i] + step).clamp(bounds[i].min, bounds[i].max);
-            minus[i] = (theta[i] - step).clamp(bounds[i].min, bounds[i].max);
+            plus[i] = (theta[i] + step).clamp(meta[i].bounds.min, meta[i].bounds.max);
+            minus[i] = (theta[i] - step).clamp(meta[i].bounds.min, meta[i].bounds.max);
         }
 
         // Apply projection to plus/minus to ensure values are logical
-        let mut params_plus = P::unpack(&plus);
-        let mut params_minus = P::unpack(&minus);
-        params_plus.project();
-        params_minus.project();
+        let mut params_plus = C::unpack(&plus);
+        let mut params_minus = C::unpack(&minus);
+        config.project(&mut params_plus);
+        config.project(&mut params_minus);
 
         let loss_plus = loss_fn(&params_plus);
         if stop.load(Ordering::Relaxed) {
@@ -228,15 +248,19 @@ where
         }
 
         for i in 0..theta.len() {
+            if !meta[i].active {
+                continue;
+            }
+
             let g_i = (loss_plus - loss_minus) / (2.0 * c_t * delta[i] as f64);
             theta[i] = (theta[i] as f64 - a_t * g_i).round() as i32;
-            theta[i] = theta[i].clamp(bounds[i].min, bounds[i].max);
+            theta[i] = theta[i].clamp(meta[i].bounds.min, meta[i].bounds.max);
         }
 
         // Apply project to theta to ensure values are logical
-        let mut params = P::unpack(&theta);
-        params.project();
-        theta = params.pack();
+        params = C::unpack(&mut theta);
+        config.project(&mut params);
+        theta = config.pack(&params);
 
         // Only calculate exact loss every 100 iterations as
         // this saves ~30% of optimisation compute time.

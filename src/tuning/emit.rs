@@ -2,8 +2,8 @@ use std::fmt::Write as _;
 
 use crate::{
     evaluate::Score,
-    params::{LazyParams, PST, Params},
-    tuning::types::TunableParams,
+    params::PST,
+    tuning::types::{FullTuningConfig, LazyTuningConfig, TuningConfig},
 };
 
 pub fn fmt_score(s: Score) -> String {
@@ -48,7 +48,7 @@ fn fmt_pst(name: &str, pst: &PST) -> String {
 }
 
 pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
-    let params = Params::unpack(theta);
+    let params = FullTuningConfig::unpack(theta);
     let mut out = String::new();
 
     writeln!(
@@ -289,7 +289,7 @@ pub fn dump_full_params(label: &str, theta: &[i32], loss: f64) {
 }
 
 pub fn render_lazy_params(label: &str, theta: &[i32], loss: f64) -> String {
-    let params = LazyParams::unpack(theta);
+    let params = LazyTuningConfig::unpack(theta);
     let mut out = String::new();
 
     writeln!(

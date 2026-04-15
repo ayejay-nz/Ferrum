@@ -18,6 +18,15 @@ macro_rules! b {
     };
 }
 
+macro_rules! m {
+    ($bounds:expr, $active:expr) => {
+        ParamMeta {
+            bounds: $bounds,
+            active: $active,
+        }
+    };
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum GameResult {
     BlackWin,
@@ -66,85 +75,117 @@ pub struct ParamBounds {
     pub min: i32,
     pub max: i32,
 }
-pub trait TunableParams: Sync + Sized {
-    fn pack(&self) -> Vec<i32>;
-    fn unpack(values: &[i32]) -> Self;
-    fn flat_bounds() -> Vec<ParamBounds>;
-    fn project(&mut self);
-    fn default() -> Self;
 
-    fn clamp(&mut self) {
-        let mut theta = self.pack();
-        let bounds = Self::flat_bounds();
+#[derive(Copy, Clone, Debug)]
+pub struct ParamMeta {
+    pub bounds: ParamBounds,
+    pub active: bool,
+}
 
-        for i in 0..theta.len() {
-            theta[i] = theta[i].clamp(bounds[i].min, bounds[i].max);
+pub trait TuningConfig {
+    type ParamType: Sync + Copy;
+
+    fn pack(&self, params: &Self::ParamType) -> Vec<i32>;
+    fn unpack(values: &[i32]) -> Self::ParamType;
+
+    fn flat_param_meta(&self) -> Vec<ParamMeta>;
+    fn project(&self, params: &mut Self::ParamType);
+    fn default_params(&self) -> Self::ParamType;
+    fn clamp(&self, params: &mut Self::ParamType);
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct FullTuningConfig {
+    pub params: Params,
+    pub meta: [ParamMeta; PARAM_COUNT],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LazyTuningConfig {
+    pub params: LazyParams,
+    pub meta: [ParamMeta; LAZY_PARAM_COUNT],
+}
+
+impl Default for FullTuningConfig {
+    fn default() -> Self {
+        Self {
+            params: DEFAULT_PARAMS,
+            meta: DEFAULT_PARAM_META,
         }
-
-        *self = Self::unpack(&theta);
     }
 }
 
-impl TunableParams for Params {
-    fn pack(&self) -> Vec<i32> {
+impl Default for LazyTuningConfig {
+    fn default() -> Self {
+        Self {
+            params: DEFAULT_LAZY_PARAMS,
+            meta: DEFAULT_LAZY_PARAM_META,
+        }
+    }
+}
+
+impl TuningConfig for FullTuningConfig {
+    type ParamType = Params;
+
+    fn pack(&self, params: &Self::ParamType) -> Vec<i32> {
         let mut out = Vec::new();
 
-        push_pawn_pst(&mut out, &self.pawn_pst);
-        push_score_array(&mut out, &self.knight_pst);
-        push_score_array(&mut out, &self.bishop_pst);
-        push_score_array(&mut out, &self.rook_pst);
-        push_score_array(&mut out, &self.queen_pst);
-        push_score_array(&mut out, &self.king_pst);
+        push_pawn_pst(&mut out, &params.pawn_pst);
+        push_score_array(&mut out, &params.knight_pst);
+        push_score_array(&mut out, &params.bishop_pst);
+        push_score_array(&mut out, &params.rook_pst);
+        push_score_array(&mut out, &params.queen_pst);
+        push_score_array(&mut out, &params.king_pst);
 
-        push_score(&mut out, self.pawn_value);
-        push_score(&mut out, self.knight_value);
-        push_score(&mut out, self.bishop_value);
-        push_score(&mut out, self.rook_value);
-        push_score(&mut out, self.queen_value);
+        push_score(&mut out, params.pawn_value);
+        push_score(&mut out, params.knight_value);
+        push_score(&mut out, params.bishop_value);
+        push_score(&mut out, params.rook_value);
+        push_score(&mut out, params.queen_value);
 
-        push_score(&mut out, self.knight_outpost);
-        push_score(&mut out, self.defended_knight_outpost);
+        push_score(&mut out, params.knight_outpost);
+        push_score(&mut out, params.defended_knight_outpost);
 
-        push_score(&mut out, self.bishop_pair);
-        push_score_array(&mut out, &self.bishop_same_colour_pawns);
+        push_score(&mut out, params.bishop_pair);
+        push_score_array(&mut out, &params.bishop_same_colour_pawns);
 
-        push_score(&mut out, self.rook_open_file);
-        push_score(&mut out, self.rook_semi_open_file);
+        push_score(&mut out, params.rook_open_file);
+        push_score(&mut out, params.rook_semi_open_file);
 
-        push_score(&mut out, self.doubled_pawns);
-        push_score(&mut out, self.tripled_pawns);
-        push_score(&mut out, self.quadrupled_pawns);
-        push_score_array(&mut out, &self.isolated_pawn);
-        push_score_array(&mut out, &self.passed_pawn);
+        push_score(&mut out, params.doubled_pawns);
+        push_score(&mut out, params.tripled_pawns);
+        push_score(&mut out, params.quadrupled_pawns);
+        push_score_array(&mut out, &params.isolated_pawn);
+        push_score_array(&mut out, &params.passed_pawn);
 
-        push_score(&mut out, self.king_on_open_file);
-        push_score(&mut out, self.king_on_semi_open_file);
-        push_score(&mut out, self.king_shield_missing_pawn);
-        push_score_array(&mut out, &self.king_pawn_shield_distance);
-        push_score_array(&mut out, &self.enemy_pawn_distance_from_backrank);
+        push_score(&mut out, params.king_on_open_file);
+        push_score(&mut out, params.king_on_semi_open_file);
+        push_score(&mut out, params.king_shield_missing_pawn);
+        push_score_array(&mut out, &params.king_pawn_shield_distance);
+        push_score_array(&mut out, &params.enemy_pawn_distance_from_backrank);
 
-        push_score(&mut out, self.king_ring_pawn_weight);
-        push_score(&mut out, self.king_ring_knight_weight);
-        push_score(&mut out, self.king_ring_bishop_weight);
-        push_score(&mut out, self.king_ring_rook_weight);
-        push_score(&mut out, self.king_ring_queen_weight);
-        push_score_array(&mut out, &self.king_ring_attacks);
+        push_score(&mut out, params.king_ring_pawn_weight);
+        push_score(&mut out, params.king_ring_knight_weight);
+        push_score(&mut out, params.king_ring_bishop_weight);
+        push_score(&mut out, params.king_ring_rook_weight);
+        push_score(&mut out, params.king_ring_queen_weight);
+        push_score_array(&mut out, &params.king_ring_attacks);
 
-        push_score_array(&mut out, &self.knight_adj);
-        push_score_array(&mut out, &self.rook_adj);
+        push_score_array(&mut out, &params.knight_adj);
+        push_score_array(&mut out, &params.rook_adj);
 
-        push_score_array(&mut out, &self.knight_mobility);
-        push_score_array(&mut out, &self.bishop_mobility);
-        push_score_array(&mut out, &self.rook_mobility);
-        push_score_array(&mut out, &self.queen_mobility);
+        push_score_array(&mut out, &params.knight_mobility);
+        push_score_array(&mut out, &params.bishop_mobility);
+        push_score_array(&mut out, &params.rook_mobility);
+        push_score_array(&mut out, &params.queen_mobility);
 
         out
     }
 
-    fn unpack(values: &[i32]) -> Self {
+    fn unpack(values: &[i32]) -> Self::ParamType {
         let mut it = values.iter().copied();
 
-        let params = Self {
+        let params = Params {
             pawn_pst: next_pawn_pst(&mut it, &PAWN_PST),
             knight_pst: next_score_array(&mut it),
             bishop_pst: next_score_array(&mut it),
@@ -199,9 +240,8 @@ impl TunableParams for Params {
         params
     }
 
-    fn flat_bounds() -> Vec<ParamBounds> {
+    fn flat_param_meta(&self) -> Vec<ParamMeta> {
         let mut out = Vec::new();
-
         let [
             pawn_pst,
             knight_pst,
@@ -242,7 +282,7 @@ impl TunableParams for Params {
             bishop_mobility,
             rook_mobility,
             queen_mobility,
-        ] = PARAM_BOUNDS;
+        ] = self.meta;
 
         push_pawn_pst_bounds(&mut out, pawn_pst);
         push_score_array_bounds::<64>(&mut out, knight_pst);
@@ -296,72 +336,119 @@ impl TunableParams for Params {
         out
     }
 
-    fn project(&mut self) {
-        make_nonincreasing(&mut self.king_ring_attacks);
-        make_nondecreasing(&mut self.passed_pawn);
+    /// Enforce that some parameter arrays are either monotone increasing or decreasing.
+    /// Enforce that material value doesn't drift too far apart.
+    /// Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores
+    /// Results in piece values more accurately representing their true value.
+    /// Normalise king ring attack values by ensuring they are logical and monotone decreasing.
+    fn project(&self, params: &mut Self::ParamType) {
+        if self.meta[32].active {
+            make_nonincreasing(&mut params.king_ring_attacks);
+        }
+        if self.meta[21].active {
+            make_nondecreasing(&mut params.passed_pawn);
+        }
 
-        make_nondecreasing(&mut self.knight_adj);
-        make_nonincreasing(&mut self.rook_adj);
+        if self.meta[33].active {
+            make_nondecreasing(&mut params.knight_adj);
+            normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
+        }
+        if self.meta[34].active {
+            make_nonincreasing(&mut params.rook_adj);
+            normalise_mean_zero(&mut params.rook_value, &mut params.rook_adj);
+        }
 
-        self.tripled_pawns.mg = self.tripled_pawns.mg.min(self.doubled_pawns.mg);
-        self.tripled_pawns.eg = self.tripled_pawns.eg.min(self.doubled_pawns.eg);
+        if self.meta[18].active {
+            params.tripled_pawns.mg = params.tripled_pawns.mg.min(params.doubled_pawns.mg);
+            params.tripled_pawns.eg = params.tripled_pawns.eg.min(params.doubled_pawns.eg);
+        }
 
-        self.quadrupled_pawns.mg = self.quadrupled_pawns.mg.min(self.tripled_pawns.mg);
-        self.quadrupled_pawns.eg = self.quadrupled_pawns.eg.min(self.tripled_pawns.eg);
+        if self.meta[19].active {
+            params.quadrupled_pawns.mg = params.quadrupled_pawns.mg.min(params.tripled_pawns.mg);
+            params.quadrupled_pawns.eg = params.quadrupled_pawns.eg.min(params.tripled_pawns.eg);
+        }
 
         // Material value
-        self.bishop_value.mg = self.bishop_value.mg.max(self.knight_value.mg - 20);
-        self.bishop_value.eg = self.bishop_value.eg.max(self.knight_value.eg - 20);
+        if self.meta[8].active {
+            params.bishop_value.mg = params.bishop_value.mg.max(params.knight_value.mg - 20);
+            params.bishop_value.eg = params.bishop_value.eg.max(params.knight_value.eg - 20);
+        }
+        if self.meta[9].active {
+            params.rook_value.mg = params.rook_value.mg.max(params.bishop_value.mg + 100);
+            params.rook_value.eg = params.rook_value.eg.max(params.bishop_value.eg + 100);
+        }
 
-        self.rook_value.mg = self.rook_value.mg.max(self.bishop_value.mg + 100);
-        self.rook_value.eg = self.rook_value.eg.max(self.bishop_value.eg + 100);
+        if self.meta[35].active {
+            normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
+        }
+        if self.meta[36].active {
+            normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
+        }
+        if self.meta[37].active {
+            normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
+        }
+        if self.meta[38].active {
+            normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
+        }
 
-        // Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores
-        // Results in piece values more accurately representing their true value
-        normalise_mean_zero(&mut self.knight_value, &mut self.knight_adj);
-        normalise_mean_zero(&mut self.rook_value, &mut self.rook_adj);
+        if self.meta[14].active {
+            normalise_mean_zero(
+                &mut params.bishop_value,
+                &mut params.bishop_same_colour_pawns,
+            );
+        }
 
-        normalise_mean_zero(&mut self.knight_value, &mut self.knight_mobility);
-        normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_mobility);
-        normalise_mean_zero(&mut self.rook_value, &mut self.rook_mobility);
-        normalise_mean_zero(&mut self.queen_value, &mut self.queen_mobility);
+        if self.meta[32].active {
+            normalise_king_ring(&mut params.king_ring_attacks);
+        }
 
-        normalise_mean_zero(&mut self.bishop_value, &mut self.bishop_same_colour_pawns);
-
-        self.clamp();
-
-        normalise_king_ring(&mut self.king_ring_attacks);
+        self.clamp(params);
     }
 
-    fn default() -> Params {
-        DEFAULT_PARAMS
+    fn clamp(&self, params: &mut Self::ParamType) {
+        let meta = self.flat_param_meta();
+        let mut theta = self.pack(params);
+
+        for i in 0..theta.len() {
+            if meta[i].active {
+                theta[i] = theta[i].clamp(meta[i].bounds.min, meta[i].bounds.max);
+            }
+        }
+
+        *params = Self::unpack(&theta);
+    }
+
+    fn default_params(&self) -> Self::ParamType {
+        self.params
     }
 }
 
-impl TunableParams for LazyParams {
-    fn pack(&self) -> Vec<i32> {
+impl TuningConfig for LazyTuningConfig {
+    type ParamType = LazyParams;
+
+    fn pack(&self, params: &Self::ParamType) -> Vec<i32> {
         let mut out = Vec::new();
 
-        push_pawn_pst(&mut out, &self.pawn_pst);
-        push_score_array(&mut out, &self.knight_pst);
-        push_score_array(&mut out, &self.bishop_pst);
-        push_score_array(&mut out, &self.rook_pst);
-        push_score_array(&mut out, &self.queen_pst);
-        push_score_array(&mut out, &self.king_pst);
+        push_pawn_pst(&mut out, &params.pawn_pst);
+        push_score_array(&mut out, &params.knight_pst);
+        push_score_array(&mut out, &params.bishop_pst);
+        push_score_array(&mut out, &params.rook_pst);
+        push_score_array(&mut out, &params.queen_pst);
+        push_score_array(&mut out, &params.king_pst);
 
-        push_score(&mut out, self.pawn_value);
-        push_score(&mut out, self.knight_value);
-        push_score(&mut out, self.bishop_value);
-        push_score(&mut out, self.rook_value);
-        push_score(&mut out, self.queen_value);
+        push_score(&mut out, params.pawn_value);
+        push_score(&mut out, params.knight_value);
+        push_score(&mut out, params.bishop_value);
+        push_score(&mut out, params.rook_value);
+        push_score(&mut out, params.queen_value);
 
         out
     }
 
-    fn unpack(values: &[i32]) -> Self {
+    fn unpack(values: &[i32]) -> Self::ParamType {
         let mut it = values.iter().copied();
 
-        let params = Self {
+        let params = Self::ParamType {
             pawn_pst: next_pawn_pst(&mut it, &LAZY_PAWN_PST),
             knight_pst: next_score_array(&mut it),
             bishop_pst: next_score_array(&mut it),
@@ -380,9 +467,8 @@ impl TunableParams for LazyParams {
         params
     }
 
-    fn flat_bounds() -> Vec<ParamBounds> {
+    fn flat_param_meta(&self) -> Vec<ParamMeta> {
         let mut out = Vec::new();
-
         let [
             pawn_pst,
             knight_pst,
@@ -395,7 +481,7 @@ impl TunableParams for LazyParams {
             bishop_value,
             rook_value,
             queen_value,
-        ] = LAZY_PARAM_BOUNDS;
+        ] = self.meta;
 
         push_pawn_pst_bounds(&mut out, pawn_pst);
         push_score_array_bounds::<64>(&mut out, knight_pst);
@@ -413,86 +499,102 @@ impl TunableParams for LazyParams {
         out
     }
 
-    fn project(&mut self) {
+    fn project(&self, params: &mut Self::ParamType) {
         // Material value
-        self.bishop_value.mg = self.bishop_value.mg.max(self.knight_value.mg - 20);
-        self.bishop_value.eg = self.bishop_value.eg.max(self.knight_value.eg - 20);
+        if self.meta[8].active {
+            params.bishop_value.mg = params.bishop_value.mg.max(params.knight_value.mg - 20);
+            params.bishop_value.eg = params.bishop_value.eg.max(params.knight_value.eg - 20);
+        }
+        if self.meta[9].active {
+            params.rook_value.mg = params.rook_value.mg.max(params.bishop_value.mg + 100);
+            params.rook_value.eg = params.rook_value.eg.max(params.bishop_value.eg + 100);
+        }
 
-        self.rook_value.mg = self.rook_value.mg.max(self.bishop_value.mg + 100);
-        self.rook_value.eg = self.rook_value.eg.max(self.bishop_value.eg + 100);
-
-        self.clamp();
+        self.clamp(params);
     }
 
-    fn default() -> Self {
-        DEFAULT_LAZY_PARAMS
+    fn clamp(&self, params: &mut Self::ParamType) {
+        let meta = self.flat_param_meta();
+        let mut theta = self.pack(params);
+
+        for i in 0..theta.len() {
+            if meta[i].active {
+                theta[i] = theta[i].clamp(meta[i].bounds.min, meta[i].bounds.max);
+            }
+        }
+
+        *params = Self::unpack(&theta);
+    }
+
+    fn default_params(&self) -> Self::ParamType {
+        self.params
     }
 }
 
 #[rustfmt::skip]
-pub const PARAM_BOUNDS: [ParamBounds; PARAM_COUNT] = [
-    b!(-50, 200),  // pawn pst
-    b!(-200, 200), // knight pst
-    b!(-100, 100), // bishop pst
-    b!(-100, 100), // rook pst
-    b!(-200, 200), // queen pst
-    b!(-200, 200), // king pst
+pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
+    m!(b!(-50, 200), true),  // 0 - pawn pst
+    m!(b!(-200, 200), true), // 1 - knight pst
+    m!(b!(-100, 100), true), // 2 - bishop pst
+    m!(b!(-100, 100), true), // 3 - rook pst
+    m!(b!(-200, 200), true), // 4 - queen pst
+    m!(b!(-200, 200), true), // 5 - king pst
 
-    b!(70, 100),   // pawn value
-    b!(240, 360),  // knight value
-    b!(250, 370),  // bishop value
-    b!(400, 560),  // rook value
-    b!(850, 1100), // queen value
+    m!(b!(70, 100), true),   // 6 - pawn value
+    m!(b!(240, 360), true),  // 7 - knight value
+    m!(b!(250, 370), true),  // 8 - bishop value
+    m!(b!(400, 560), true),  // 9 - rook value
+    m!(b!(850, 1100), true), // 10 - queen value
 
-    b!(-5, 30),    // knight outpost
-    b!(-5, 60),    // defended knight outpost
+    m!(b!(-5, 30), true),    // 11 - knight outpost
+    m!(b!(-5, 60), true),    // 12 - defended knight outpost
 
-    b!(-5, 100),   // bishop pair
-    b!(-50, 30),   // bishop same colour pawns
+    m!(b!(-5, 100), true),   // 13 - bishop pair
+    m!(b!(-50, 30), true),   // 14 - bishop same colour pawns
 
-    b!(-5, 100),   // rook open file
-    b!(-5, 100),   // rook semi-open file
+    m!(b!(-5, 100), true),   // 15 - rook open file
+    m!(b!(-5, 100), true),   // 16 - rook semi-open file
 
-    b!(-100, -1),  // doubled pawns
-    b!(-200, -1),  // tripled pawns
-    b!(-400, -50), // quadrupled pawns
-    b!(-50, 10),   // isolated pawn
-    b!(-5, 200),   // passed pawn
+    m!(b!(-100, -1), true),  // 17 - doubled pawns
+    m!(b!(-200, -1), true),  // 18 - tripled pawns
+    m!(b!(-400, -50), true), // 19 - quadrupled pawns
+    m!(b!(-50, 10), true),   // 20 - isolated pawn
+    m!(b!(-5, 200), true),   // 21 - passed pawn
 
-    b!(-75, 5),    // king on open file
-    b!(-40, 40),   // king on semi open file
-    b!(-75, 0),    // king shield missing pawn
-    b!(-40, 40),   // king pawn shield distance
-    b!(-50, 0),    // enemy pawn distance from backrank
+    m!(b!(-75, 5), true),    // 22 - king on open file
+    m!(b!(-40, 40), true),   // 23 - king on semi open file
+    m!(b!(-75, 0), true),    // 24 - king shield missing pawn
+    m!(b!(-40, 40), true),   // 25 - king pawn shield distance
+    m!(b!(-50, 0), true),    // 26 - enemy pawn distance from backrank
 
-    b!(1, 2),      // king ring pawn weights
-    b!(2, 3),      // king ring knight weights
-    b!(2, 3),      // king ring bishop weights
-    b!(3, 4),      // king ring rook weights
-    b!(4, 5),      // king ring queen weights
-    b!(-200, 20),  // king ring attacks
+    m!(b!(1, 2), true),      // 27 - king ring pawn weights
+    m!(b!(2, 3), true),      // 28 - king ring knight weights
+    m!(b!(2, 3), true),      // 29 - king ring bishop weights
+    m!(b!(3, 4), true),      // 30 - king ring rook weights
+    m!(b!(4, 5), true),      // 31 - king ring queen weights
+    m!(b!(-200, 20), true),  // 32 - king ring attacks
 
-    b!(-60, 60),   // knight adj
-    b!(-60, 60),   // rook adj
+    m!(b!(-60, 60), true),   // 33 - knight adj
+    m!(b!(-60, 60), true),   // 34 - rook adj
 
-    b!(-75, 75),   // knight mobility
-    b!(-75, 75),   // bishop mobility
-    b!(-50, 50),   // rook mobility
-    b!(-50, 50),   // queen mobility
+    m!(b!(-75, 75), true),   // 35 - knight mobility
+    m!(b!(-75, 75), true),   // 36 - bishop mobility
+    m!(b!(-50, 50), true),   // 37 - rook mobility
+    m!(b!(-50, 50), true),   // 38 - queen mobility
 ];
 
 #[rustfmt::skip]
-pub const LAZY_PARAM_BOUNDS: [ParamBounds; LAZY_PARAM_COUNT] = [
-    b!(-50, 200),  // pawn pst
-    b!(-200, 200), // knight pst
-    b!(-100, 100), // bishop pst
-    b!(-100, 100), // rook pst
-    b!(-200, 200), // queen pst
-    b!(-200, 200), // king pst
+pub const DEFAULT_LAZY_PARAM_META: [ParamMeta; LAZY_PARAM_COUNT] = [
+    m!(b!(-50, 200), true),  // 0 - pawn pst
+    m!(b!(-200, 200), true), // 1 - knight pst
+    m!(b!(-100, 100), true), // 2 - bishop pst
+    m!(b!(-100, 100), true), // 3 - rook pst
+    m!(b!(-200, 200), true), // 4 - queen pst
+    m!(b!(-200, 200), true), // 5 - king pst
 
-    b!(70, 100),   // pawn value
-    b!(240, 360),  // knight value
-    b!(250, 370),  // bishop value
-    b!(400, 560),  // rook value
-    b!(850, 1100), // queen value
+    m!(b!(70, 100), true),   // 6 - pawn value
+    m!(b!(240, 360), true),  // 7 - knight value
+    m!(b!(250, 370), true),  // 8 - bishop value
+    m!(b!(400, 560), true),  // 9 - rook value
+    m!(b!(850, 1100), true), // 10 - queen value
 ];

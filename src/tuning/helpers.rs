@@ -1,6 +1,6 @@
 use std::array;
 
-use crate::{evaluate::Score, params::PST, tuning::types::ParamBounds};
+use crate::{evaluate::Score, params::PST, tuning::types::ParamMeta};
 
 pub fn push_score(out: &mut Vec<i32>, s: Score) {
     out.push(s.mg);
@@ -119,18 +119,18 @@ pub fn normalise_king_ring(arr: &mut [Score; 24]) {
     limit_subsequent_drop(arr, 15, -200);
 }
 
-pub fn push_score_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+pub fn push_score_bounds(out: &mut Vec<ParamMeta>, b: ParamMeta) {
     out.push(b); // mg
     out.push(b); // eg
 }
 
-pub fn push_score_array_bounds<const N: usize>(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+pub fn push_score_array_bounds<const N: usize>(out: &mut Vec<ParamMeta>, b: ParamMeta) {
     for _ in 0..N {
         push_score_bounds(out, b);
     }
 }
 
-pub fn push_pawn_pst_bounds(out: &mut Vec<ParamBounds>, b: ParamBounds) {
+pub fn push_pawn_pst_bounds(out: &mut Vec<ParamMeta>, b: ParamMeta) {
     for _ in 8..56 {
         push_score_bounds(out, b);
     }

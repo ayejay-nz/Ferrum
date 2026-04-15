@@ -1,9 +1,8 @@
 use core::f64;
 use rayon::prelude::*;
-use std::cmp::Reverse;
+use std::{cmp::Reverse, marker::Sync};
 
 use crate::movegen::{MoveList, generate_legal};
-use crate::tuning::types::TunableParams;
 use crate::{
     evaluate::{Eval, INFINITY},
     movegen::generate_legal_noisy,
@@ -21,7 +20,7 @@ fn texel_qsearch<P, E>(
     beta: Eval,
 ) -> Eval
 where
-    E: Fn(&Position, &P) -> Eval,
+    E: Fn(&Position, &P) -> Eval + Sync,
 {
     if pos.halfmove_clock >= 100 || pos.insufficient_material() {
         return 0;
@@ -74,7 +73,7 @@ where
 
 fn texel_root_qsearch<P, E>(pos: &mut Position, params: &P, eval: &E) -> Eval
 where
-    E: Fn(&Position, &P) -> Eval,
+    E: Fn(&Position, &P) -> Eval + Sync,
 {
     let score = texel_qsearch(pos, params, eval, -INFINITY, INFINITY);
 
@@ -105,7 +104,7 @@ where
 
 pub fn loss<P, E>(samples: &[Sample], params: &P, eval: &E, k: f64) -> f64
 where
-    P: TunableParams,
+    P: Sync,
     E: Fn(&Position, &P) -> Eval + Sync,
 {
     let total: f64 = samples
@@ -118,7 +117,7 @@ where
 
 pub fn fit_k<P, E>(samples: &[Sample], params: &P, eval: &E) -> f64
 where
-    P: TunableParams,
+    P: Sync,
     E: Fn(&Position, &P) -> Eval + Sync,
 {
     let mut best_k = 0.1;
