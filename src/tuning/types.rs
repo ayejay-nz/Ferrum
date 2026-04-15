@@ -342,20 +342,26 @@ impl TuningConfig for FullTuningConfig {
     /// Results in piece values more accurately representing their true value.
     /// Normalise king ring attack values by ensuring they are logical and monotone decreasing.
     fn project(&self, params: &mut Self::ParamType) {
-        if self.meta[32].active {
-            make_nonincreasing(&mut params.king_ring_attacks);
-        }
         if self.meta[21].active {
             make_nondecreasing(&mut params.passed_pawn);
+        }
+        if self.meta[32].active {
+            make_nonincreasing(&mut params.king_ring_attacks);
         }
 
         if self.meta[33].active {
             make_nondecreasing(&mut params.knight_adj);
-            normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
+
+            if self.meta[7].active {
+                normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
+            }
         }
         if self.meta[34].active {
             make_nonincreasing(&mut params.rook_adj);
-            normalise_mean_zero(&mut params.rook_value, &mut params.rook_adj);
+
+            if self.meta[9].active {
+                normalise_mean_zero(&mut params.rook_value, &mut params.rook_adj);
+            }
         }
 
         if self.meta[18].active {
@@ -378,20 +384,20 @@ impl TuningConfig for FullTuningConfig {
             params.rook_value.eg = params.rook_value.eg.max(params.bishop_value.eg + 100);
         }
 
-        if self.meta[35].active {
+        if self.meta[7].active && self.meta[35].active {
             normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
         }
-        if self.meta[36].active {
+        if self.meta[8].active && self.meta[36].active {
             normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
         }
-        if self.meta[37].active {
+        if self.meta[9].active && self.meta[37].active {
             normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
         }
-        if self.meta[38].active {
+        if self.meta[10].active && self.meta[38].active {
             normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
         }
 
-        if self.meta[14].active {
+        if self.meta[8].active && self.meta[14].active {
             normalise_mean_zero(
                 &mut params.bishop_value,
                 &mut params.bishop_same_colour_pawns,
