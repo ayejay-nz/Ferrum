@@ -47,6 +47,14 @@ impl Div<i32> for Score {
     }
 }
 
+#[derive(Default, Copy, Clone)]
+struct EvalInfo {
+    knight_attacks: [Bitboard; 2],
+    bishop_attacks: [Bitboard; 2],
+    rook_attacks: [Bitboard; 2],
+    queen_attacks: [Bitboard; 2],
+}
+
 #[inline(always)]
 const fn phase_weight(piece: Piece) -> u32 {
     PHASE_WEIGHTS[piece.idx()]
@@ -149,7 +157,12 @@ fn evaluate_pawns<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
     }
 }
 
-fn evaluate_knights<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_knights<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let bbs = bitboards();
 
     let own_occ = pos.occupancy[S::IDX];
@@ -168,8 +181,9 @@ fn evaluate_knights<S: Side>(pos: &Position, score: &mut Score, params: &Params)
         let sq = relative_square::<S>(knight);
         score.add::<S>(params.knight_pst[sq]);
 
-        // Mobility
+        // Mobility/attacks
         let attacks = bbs.knight_attacks(knight) & !own_occ;
+        info.knight_attacks[S::IDX] |= attacks;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.knight_mobility[mobility]);
@@ -200,7 +214,12 @@ fn evaluate_knights<S: Side>(pos: &Position, score: &mut Score, params: &Params)
     }
 }
 
-fn evaluate_bishops<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_bishops<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let bbs = bitboards();
 
     let own_occ = pos.occupancy[S::IDX];
@@ -228,8 +247,9 @@ fn evaluate_bishops<S: Side>(pos: &Position, score: &mut Score, params: &Params)
         let sq = relative_square::<S>(bishop);
         score.add::<S>(params.bishop_pst[sq]);
 
-        // Mobility
+        // Mobility/attacks
         let attacks = bbs.bishop_attacks(bishop, occ) & !own_occ;
+        info.bishop_attacks[S::IDX] |= attacks;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.bishop_mobility[mobility]);
@@ -260,7 +280,12 @@ fn evaluate_bishops<S: Side>(pos: &Position, score: &mut Score, params: &Params)
     }
 }
 
-fn evaluate_rooks<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_rooks<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let bbs = bitboards();
 
     let own_occ = pos.occupancy[S::IDX];
@@ -284,8 +309,9 @@ fn evaluate_rooks<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
         let sq = relative_square::<S>(rook);
         score.add::<S>(params.rook_pst[sq]);
 
-        // Mobility
+        // Mobility/attacks
         let attacks = bbs.rook_attacks(rook, occ) & !own_occ;
+        info.rook_attacks[S::IDX] |= attacks;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.rook_mobility[mobility]);
@@ -307,7 +333,12 @@ fn evaluate_rooks<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
     }
 }
 
-fn evaluate_queens<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_queens<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let bbs = bitboards();
 
     let own_occ = pos.occupancy[S::IDX];
@@ -325,15 +356,21 @@ fn evaluate_queens<S: Side>(pos: &Position, score: &mut Score, params: &Params) 
         let sq = relative_square::<S>(queen);
         score.add::<S>(params.queen_pst[sq]);
 
-        // Mobility
+        // Mobility/attacks
         let attacks = (bbs.bishop_attacks(queen, occ) | bbs.rook_attacks(queen, occ)) & !own_occ;
+        info.queen_attacks[S::IDX] |= attacks;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.queen_mobility[mobility]);
     }
 }
 
-fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_king_safety<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let bbs = bitboards();
 
     let king = if S::IS_WHITE {
@@ -365,16 +402,11 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
     }
 
     // King ring attacks
-    let occ = pos.occupancy[2];
     let king_ring = bbs.king_attacks(king);
     let mut mg_units = 0;
     let mut eg_units = 0;
 
     let enemy_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
-    let enemy_knights = pos.pieces[S::THEM][Piece::Knight.idx()];
-    let enemy_bishops = pos.pieces[S::THEM][Piece::Bishop.idx()];
-    let enemy_rooks = pos.pieces[S::THEM][Piece::Rook.idx()];
-    let enemy_queens = pos.pieces[S::THEM][Piece::Queen.idx()];
 
     // Pawns in bulk
     let pawn_attacks = if S::IS_WHITE {
@@ -387,47 +419,27 @@ fn evaluate_king_safety<S: Side>(pos: &Position, score: &mut Score, params: &Par
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
-    let mut knights = enemy_knights;
-    let mut knight_attacks = Bitboard::new(0);
-    while !knights.is_empty() {
-        let knight = knights.pop_lsb();
-        knight_attacks |= bbs.knight_attacks(knight);
-    }
+    let knight_attacks = info.knight_attacks[S::THEM] & king_ring;
     let w = params.king_ring_knight_weight;
-    let hits = (knight_attacks & king_ring).bit_count() as i32;
+    let hits = knight_attacks.bit_count() as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
-    let mut bishops = enemy_bishops;
-    let mut bishop_attacks = Bitboard::new(0);
-    while !bishops.is_empty() {
-        let bishop = bishops.pop_lsb();
-        bishop_attacks |= bbs.bishop_attacks(bishop, occ);
-    }
+    let bishop_attacks = info.bishop_attacks[S::THEM] & king_ring;
     let w = params.king_ring_bishop_weight;
-    let hits = (bishop_attacks & king_ring).bit_count() as i32;
+    let hits = bishop_attacks.bit_count() as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
-    let mut rooks = enemy_rooks;
-    let mut rook_attacks = Bitboard::new(0);
-    while !rooks.is_empty() {
-        let rook = rooks.pop_lsb();
-        rook_attacks |= bbs.rook_attacks(rook, occ);
-    }
+    let rook_attacks = info.rook_attacks[S::THEM] & king_ring;
     let w = params.king_ring_rook_weight;
-    let hits = (rook_attacks & king_ring).bit_count() as i32;
+    let hits = rook_attacks.bit_count() as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
-    let mut queens = enemy_queens;
-    let mut queen_attacks = Bitboard::new(0);
-    while !queens.is_empty() {
-        let queen = queens.pop_lsb();
-        queen_attacks |= bbs.rook_attacks(queen, occ) | bbs.bishop_attacks(queen, occ);
-    }
+    let queen_attacks = info.queen_attacks[S::THEM] & king_ring;
     let w = params.king_ring_queen_weight;
-    let hits = (queen_attacks & king_ring).bit_count() as i32;
+    let hits = queen_attacks.bit_count() as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
@@ -480,25 +492,26 @@ pub fn evaluate(pos: &Position) -> Eval {
 
 pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     let mut score = Score::default();
+    let mut info = EvalInfo::default();
     let phase = game_phase(pos);
 
     evaluate_pawns::<White>(pos, &mut score, params);
     evaluate_pawns::<Black>(pos, &mut score, params);
 
-    evaluate_knights::<White>(pos, &mut score, params);
-    evaluate_knights::<Black>(pos, &mut score, params);
+    evaluate_knights::<White>(pos, &mut score, &mut info, params);
+    evaluate_knights::<Black>(pos, &mut score, &mut info, params);
 
-    evaluate_bishops::<White>(pos, &mut score, params);
-    evaluate_bishops::<Black>(pos, &mut score, params);
+    evaluate_bishops::<White>(pos, &mut score, &mut info, params);
+    evaluate_bishops::<Black>(pos, &mut score, &mut info, params);
 
-    evaluate_rooks::<White>(pos, &mut score, params);
-    evaluate_rooks::<Black>(pos, &mut score, params);
+    evaluate_rooks::<White>(pos, &mut score, &mut info, params);
+    evaluate_rooks::<Black>(pos, &mut score, &mut info, params);
 
-    evaluate_queens::<White>(pos, &mut score, params);
-    evaluate_queens::<Black>(pos, &mut score, params);
+    evaluate_queens::<White>(pos, &mut score, &mut info, params);
+    evaluate_queens::<Black>(pos, &mut score, &mut info, params);
 
-    evaluate_king_safety::<White>(pos, &mut score, params);
-    evaluate_king_safety::<Black>(pos, &mut score, params);
+    evaluate_king_safety::<White>(pos, &mut score, &mut info, params);
+    evaluate_king_safety::<Black>(pos, &mut score, &mut info, params);
 
     taper(score, phase, pos.side_to_move)
 }

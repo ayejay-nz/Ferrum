@@ -7,7 +7,7 @@ use std::{
 use crate::types::{self, Colour, Direction, Piece, Square};
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Default, Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboard(u64);
 
 impl Bitboard {
