@@ -234,6 +234,23 @@ fn evaluate_bishops<S: Side>(pos: &Position, score: &mut Score, params: &Params)
 
         score.add::<S>(params.bishop_mobility[mobility]);
 
+        // Fianchettoed bishop
+        if S::IS_WHITE {
+            if bishop == Square::B2 && !(pawns & Square::B3.bitboard()).is_empty() {
+                score.add::<S>(params.fianchetto);
+            }
+            if bishop == Square::G2 && !(pawns & Square::G3.bitboard()).is_empty() {
+                score.add::<S>(params.fianchetto);
+            }
+        } else {
+            if bishop == Square::B7 && !(pawns & Square::B6.bitboard()).is_empty() {
+                score.add::<S>(params.fianchetto);
+            }
+            if bishop == Square::G7 && !(pawns & Square::G6.bitboard()).is_empty() {
+                score.add::<S>(params.fianchetto);
+            }
+        }
+
         // Good/bad bishop eval
         if bishop.colour() == Colour::White {
             score.add::<S>(params.bishop_same_colour_pawns[light_pawns]);

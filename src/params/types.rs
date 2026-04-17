@@ -23,6 +23,7 @@ pub struct Params {
 
     pub bishop_pair: Score,
     pub bishop_same_colour_pawns: [Score; 9],
+    pub fianchetto: Score,
 
     pub rook_open_file: Score,
     pub rook_semi_open_file: Score,
@@ -90,6 +91,7 @@ pub const DEFAULT_PARAMS: Params = Params {
 
     bishop_pair: BISHOP_PAIR,
     bishop_same_colour_pawns: BISHOP_SAME_COLOUR_PAWNS,
+    fianchetto: FIANCHETTO,
 
     rook_open_file: ROOK_OPEN_FILE,
     rook_semi_open_file: ROOK_SEMI_OPEN_FILE,

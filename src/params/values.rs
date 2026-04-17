@@ -6,7 +6,7 @@ macro_rules! s {
     };
 }
 
-pub const PARAM_COUNT: usize = 39;
+pub const PARAM_COUNT: usize = 40;
 pub const LAZY_PARAM_COUNT: usize = 11;
 
 pub const PIECE_VALUES: [Score; 5] = [
@@ -46,6 +46,7 @@ pub const BISHOP_SAME_COLOUR_PAWNS: [Score; 9] = [
     s!(20, 0),
     s!(-10, 23),
 ];
+pub const FIANCHETTO: Score = s!(13, 1);
 
 pub const ROOK_OPEN_FILE: Score = s!(49, -3);
 pub const ROOK_SEMI_OPEN_FILE: Score = s!(16, 10);
