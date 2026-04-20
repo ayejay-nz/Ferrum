@@ -377,9 +377,9 @@ fn evaluate_queens<S: Side>(
         // Punish early development
         if queen != home {
             let backrank = if S::IS_WHITE {
-                Bitboard::RANK_1 & Bitboard::new(0xE7)
+                Bitboard::new(0x66)
             } else {
-                Bitboard::RANK_8 & Bitboard::new(0xE7 << 56)
+                Bitboard::new(0x66 << 56)
             };
             let pieces =
                 pos.pieces[S::IDX][Piece::Knight.idx()] | pos.pieces[S::IDX][Piece::Bishop.idx()];
