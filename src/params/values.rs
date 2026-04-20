@@ -56,8 +56,8 @@ pub const KING_ON_OPEN_FILE: Score = s!(-61, -7);
 pub const KING_PAWN_SHIELD_DISTANCE: [Score; 4] =
     [s!(15, -35), s!(5, -21), s!(12, -16), s!(-20, 10)];
 pub const KING_SHIELD_MISSING_PAWN: Score = s!(-21, 0);
-pub const QUEEN_UNDEVELOPED_PIECE_PUNISHMENT: Score = s!(8, 0);
-pub const QUEEN_UNMOVED_KING_PUNISHMENT: Score = s!(6, 0);
+pub const QUEEN_UNDEVELOPED_PIECE_PUNISHMENT: Score = s!(-8, 0);
+pub const QUEEN_UNMOVED_KING_PUNISHMENT: Score = s!(-6, 0);
 
 pub const ENEMY_PAWN_DISTANCE_FROM_BACKRANK: [Score; 4] =
     [s!(0, -7), s!(-19, -1), s!(-8, -1), s!(-1, -4)];
