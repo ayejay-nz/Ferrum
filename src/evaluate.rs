@@ -356,6 +356,32 @@ fn evaluate_queens<S: Side>(
         let sq = relative_square::<S>(queen);
         score.add::<S>(params.queen_pst[sq]);
 
+        // Punish early development
+        if queen != home {
+            let backrank = if S::IS_WHITE {
+                Bitboard::RANK_1 & Bitboard::new(0xE7)
+            } else {
+                Bitboard::RANK_8 & Bitboard::new(0xE7 << 56)
+            };
+            let pieces =
+                pos.pieces[S::IDX][Piece::Knight.idx()] | pos.pieces[S::IDX][Piece::Bishop.idx()];
+            let undeveloped = (backrank & pieces).bit_count() as i32;
+
+            if undeveloped > 0 {
+                let king_on_home_sq = if S::IS_WHITE {
+                    (pos.white_king_square == Square::E1) as i32
+                } else {
+                    (pos.black_king_square == Square::E8) as i32
+                };
+
+                score.add::<S>(Score {
+                    mg: params.queen_undeveloped_piece_punishment.mg * undeveloped
+                        + params.queen_unmoved_king_punishment.mg * king_on_home_sq,
+                    eg: 0,
+                });
+            }
+        }
+
         // Mobility/attacks
         let attacks = (bbs.bishop_attacks(queen, occ) | bbs.rook_attacks(queen, occ)) & !own_occ;
         info.queen_attacks[S::IDX] |= attacks;

@@ -153,6 +153,9 @@ impl TuningConfig for FullTuningConfig {
         push_score(&mut out, params.rook_open_file);
         push_score(&mut out, params.rook_semi_open_file);
 
+        push_score(&mut out, params.queen_undeveloped_piece_punishment);
+        push_score(&mut out, params.queen_unmoved_king_punishment);
+
         push_score(&mut out, params.doubled_pawns);
         push_score(&mut out, params.tripled_pawns);
         push_score(&mut out, params.quadrupled_pawns);
@@ -210,6 +213,9 @@ impl TuningConfig for FullTuningConfig {
             rook_open_file: next_score(&mut it),
             rook_semi_open_file: next_score(&mut it),
 
+            queen_undeveloped_piece_punishment: next_score(&mut it),
+            queen_unmoved_king_punishment: next_score(&mut it),
+
             doubled_pawns: next_score(&mut it),
             tripled_pawns: next_score(&mut it),
             quadrupled_pawns: next_score(&mut it),
@@ -263,6 +269,8 @@ impl TuningConfig for FullTuningConfig {
             fianchetto,
             rook_open_file,
             rook_semi_open_file,
+            queen_undeveloped_piece_punishment,
+            queen_unmoved_king_punishment,
             doubled_pawns,
             tripled_pawns,
             quadrupled_pawns,
@@ -310,6 +318,9 @@ impl TuningConfig for FullTuningConfig {
         push_score_bounds(&mut out, rook_open_file);
         push_score_bounds(&mut out, rook_semi_open_file);
 
+        push_score_bounds(&mut out, queen_undeveloped_piece_punishment);
+        push_score_bounds(&mut out, queen_unmoved_king_punishment);
+
         push_score_bounds(&mut out, doubled_pawns);
         push_score_bounds(&mut out, tripled_pawns);
         push_score_bounds(&mut out, quadrupled_pawns);
@@ -346,21 +357,21 @@ impl TuningConfig for FullTuningConfig {
     /// Results in piece values more accurately representing their true value.
     /// Normalise king ring attack values by ensuring they are logical and monotone decreasing.
     fn project(&self, params: &mut Self::ParamType) {
-        if self.meta[22].active {
+        if self.meta[24].active {
             make_nondecreasing(&mut params.passed_pawn);
         }
-        if self.meta[33].active {
+        if self.meta[35].active {
             make_nonincreasing(&mut params.king_ring_attacks);
         }
 
-        if self.meta[34].active {
+        if self.meta[36].active {
             make_nondecreasing(&mut params.knight_adj);
 
             if self.meta[7].active {
                 normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
             }
         }
-        if self.meta[35].active {
+        if self.meta[37].active {
             make_nonincreasing(&mut params.rook_adj);
 
             if self.meta[9].active {
@@ -368,12 +379,12 @@ impl TuningConfig for FullTuningConfig {
             }
         }
 
-        if self.meta[19].active {
+        if self.meta[21].active {
             params.tripled_pawns.mg = params.tripled_pawns.mg.min(params.doubled_pawns.mg);
             params.tripled_pawns.eg = params.tripled_pawns.eg.min(params.doubled_pawns.eg);
         }
 
-        if self.meta[20].active {
+        if self.meta[22].active {
             params.quadrupled_pawns.mg = params.quadrupled_pawns.mg.min(params.tripled_pawns.mg);
             params.quadrupled_pawns.eg = params.quadrupled_pawns.eg.min(params.tripled_pawns.eg);
         }
@@ -388,16 +399,16 @@ impl TuningConfig for FullTuningConfig {
             params.rook_value.eg = params.rook_value.eg.max(params.bishop_value.eg + 100);
         }
 
-        if self.meta[7].active && self.meta[36].active {
+        if self.meta[7].active && self.meta[38].active {
             normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
         }
-        if self.meta[8].active && self.meta[37].active {
+        if self.meta[8].active && self.meta[39].active {
             normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
         }
-        if self.meta[9].active && self.meta[38].active {
+        if self.meta[9].active && self.meta[40].active {
             normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
         }
-        if self.meta[10].active && self.meta[39].active {
+        if self.meta[10].active && self.meta[41].active {
             normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
         }
 
@@ -408,7 +419,7 @@ impl TuningConfig for FullTuningConfig {
             );
         }
 
-        if self.meta[33].active {
+        if self.meta[35].active {
             normalise_king_ring(&mut params.king_ring_attacks);
         }
 
@@ -566,32 +577,35 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(-5, 100), true),   // 16 - rook open file
     m!(b!(-5, 100), true),   // 17 - rook semi-open file
 
-    m!(b!(-100, -1), true),  // 18 - doubled pawns
-    m!(b!(-200, -1), true),  // 19 - tripled pawns
-    m!(b!(-400, -50), true), // 20 - quadrupled pawns
-    m!(b!(-50, 10), true),   // 21 - isolated pawn
-    m!(b!(-5, 200), true),   // 22 - passed pawn
+    m!(b!(-20, 0), true),    // 18 - queen undeveloped piece punishment
+    m!(b!(-20, 0), true),    // 19 - queen unmoved king punishment
 
-    m!(b!(-75, 5), true),    // 23 - king on open file
-    m!(b!(-40, 40), true),   // 24 - king on semi open file
-    m!(b!(-75, 0), true),    // 25 - king shield missing pawn
-    m!(b!(-40, 40), true),   // 26 - king pawn shield distance
-    m!(b!(-50, 0), true),    // 27 - enemy pawn distance from backrank
+    m!(b!(-100, -1), true),  // 20 - doubled pawns
+    m!(b!(-200, -1), true),  // 21 - tripled pawns
+    m!(b!(-400, -50), true), // 22 - quadrupled pawns
+    m!(b!(-50, 10), true),   // 23 - isolated pawn
+    m!(b!(-5, 200), true),   // 24 - passed pawn
 
-    m!(b!(1, 2), true),      // 28 - king ring pawn weights
-    m!(b!(2, 3), true),      // 29 - king ring knight weights
-    m!(b!(2, 3), true),      // 30 - king ring bishop weights
-    m!(b!(3, 4), true),      // 31 - king ring rook weights
-    m!(b!(4, 5), true),      // 32 - king ring queen weights
-    m!(b!(-200, 20), true),  // 33 - king ring attacks
+    m!(b!(-75, 5), true),    // 25 - king on open file
+    m!(b!(-40, 40), true),   // 26 - king on semi open file
+    m!(b!(-75, 0), true),    // 27 - king shield missing pawn
+    m!(b!(-40, 40), true),   // 28 - king pawn shield distance
+    m!(b!(-50, 0), true),    // 29 - enemy pawn distance from backrank
 
-    m!(b!(-60, 60), true),   // 34 - knight adj
-    m!(b!(-60, 60), true),   // 35 - rook adj
+    m!(b!(1, 2), true),      // 30 - king ring pawn weights
+    m!(b!(2, 3), true),      // 31 - king ring knight weights
+    m!(b!(2, 3), true),      // 32 - king ring bishop weights
+    m!(b!(3, 4), true),      // 33 - king ring rook weights
+    m!(b!(4, 5), true),      // 34 - king ring queen weights
+    m!(b!(-200, 20), true),  // 35 - king ring attacks
 
-    m!(b!(-75, 75), true),   // 36 - knight mobility
-    m!(b!(-75, 75), true),   // 37 - bishop mobility
-    m!(b!(-50, 50), true),   // 38 - rook mobility
-    m!(b!(-50, 50), true),   // 39 - queen mobility
+    m!(b!(-60, 60), true),   // 36 - knight adj
+    m!(b!(-60, 60), true),   // 37 - rook adj
+
+    m!(b!(-75, 75), true),   // 38 - knight mobility
+    m!(b!(-75, 75), true),   // 39 - bishop mobility
+    m!(b!(-50, 50), true),   // 40 - rook mobility
+    m!(b!(-50, 50), true),   // 41 - queen mobility
 ];
 
 #[rustfmt::skip]

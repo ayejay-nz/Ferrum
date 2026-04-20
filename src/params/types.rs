@@ -28,6 +28,9 @@ pub struct Params {
     pub rook_open_file: Score,
     pub rook_semi_open_file: Score,
 
+    pub queen_undeveloped_piece_punishment: Score,
+    pub queen_unmoved_king_punishment: Score,
+
     pub doubled_pawns: Score,
     pub tripled_pawns: Score,
     pub quadrupled_pawns: Score,
@@ -95,6 +98,9 @@ pub const DEFAULT_PARAMS: Params = Params {
 
     rook_open_file: ROOK_OPEN_FILE,
     rook_semi_open_file: ROOK_SEMI_OPEN_FILE,
+
+    queen_undeveloped_piece_punishment: QUEEN_UNDEVELOPED_PIECE_PUNISHMENT,
+    queen_unmoved_king_punishment: QUEEN_UNMOVED_KING_PUNISHMENT,
 
     doubled_pawns: DOUBLED_PAWNS,
     tripled_pawns: TRIPLED_PAWNS,
