@@ -155,6 +155,62 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
 
     writeln!(
         &mut out,
+        "pub const QUEEN_UNDEVELOPED_PIECE_PUNISHMENT: Score = {};",
+        fmt_score(params.queen_undeveloped_piece_punishment)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const QUEEN_UNMOVED_KING_PUNISHMENT: Score = {};",
+        fmt_score(params.queen_unmoved_king_punishment)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const PAWN_THREAT_MINOR: Score = {};",
+        fmt_score(params.pawn_threat_minor)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const PAWN_THREAT_MAJOR: Score = {};",
+        fmt_score(params.pawn_threat_major)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const HANGING_MINOR: Score = {};",
+        fmt_score(params.hanging_minor)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const HANGING_ROOK: Score = {};",
+        fmt_score(params.hanging_rook)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const HANGING_QUEEN: Score = {};",
+        fmt_score(params.hanging_queen)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const MINOR_THREAT_QUEEN: Score = {};",
+        fmt_score(params.minor_threat_queen)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const ROOK_THREAT_QUEEN: Score = {};",
+        fmt_score(params.rook_threat_queen)
+    )
+    .unwrap();
+    writeln!(&mut out).unwrap();
+
+    writeln!(
+        &mut out,
         "pub const KING_ON_SEMI_OPEN_FILE: Score = {};",
         fmt_score(params.king_on_semi_open_file)
     )
