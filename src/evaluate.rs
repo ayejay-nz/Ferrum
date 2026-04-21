@@ -50,23 +50,35 @@ impl Div<i32> for Score {
 #[derive(Default, Copy, Clone)]
 struct EvalInfo {
     king_ring: [Bitboard; 2],
-    knight_attacks: [u32; 2],
-    bishop_attacks: [u32; 2],
-    rook_attacks: [u32; 2],
-    queen_attacks: [u32; 2],
+    pawn_attacks: [Bitboard; 2],
+    knight_attacks: [Bitboard; 2],
+    bishop_attacks: [Bitboard; 2],
+    rook_attacks: [Bitboard; 2],
+    queen_attacks: [Bitboard; 2],
+    all_attacks: [Bitboard; 2],
+    king_ring_knight_hits: [u32; 2],
+    king_ring_bishop_hits: [u32; 2],
+    king_ring_rook_hits: [u32; 2],
+    king_ring_queen_hits: [u32; 2],
 }
 
 impl EvalInfo {
     fn init(pos: &Position, bbs: &Bitboards) -> Self {
+        let white_king_ring = bbs.king_attacks(pos.white_king_square);
+        let black_king_ring = bbs.king_attacks(pos.black_king_square);
+
         Self {
-            king_ring: [
-                bbs.king_attacks(pos.white_king_square),
-                bbs.king_attacks(pos.black_king_square),
-            ],
-            knight_attacks: [0, 0],
-            bishop_attacks: [0, 0],
-            rook_attacks: [0, 0],
-            queen_attacks: [0, 0],
+            king_ring: [white_king_ring, black_king_ring],
+            pawn_attacks: [Bitboard::default(), Bitboard::default()],
+            knight_attacks: [Bitboard::default(), Bitboard::default()],
+            bishop_attacks: [Bitboard::default(), Bitboard::default()],
+            rook_attacks: [Bitboard::default(), Bitboard::default()],
+            queen_attacks: [Bitboard::default(), Bitboard::default()],
+            all_attacks: [white_king_ring, black_king_ring],
+            king_ring_knight_hits: [0, 0],
+            king_ring_bishop_hits: [0, 0],
+            king_ring_rook_hits: [0, 0],
+            king_ring_queen_hits: [0, 0],
         }
     }
 }
@@ -111,7 +123,12 @@ fn game_phase(pos: &Position) -> i32 {
     phase as i32
 }
 
-fn evaluate_pawns<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
+fn evaluate_pawns<S: Side>(
+    pos: &Position,
+    score: &mut Score,
+    info: &mut EvalInfo,
+    params: &Params,
+) {
     let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
     let opp_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
 
@@ -129,6 +146,15 @@ fn evaluate_pawns<S: Side>(pos: &Position, score: &mut Score, params: &Params) {
 
         file_counts[pawn.file() as usize] += 1;
     }
+
+    // Store pawn attacks
+    let pawn_attacks = if S::IS_WHITE {
+        pawns.shift(Direction::NorthEast) | pawns.shift(Direction::NorthWest)
+    } else {
+        pawns.shift(Direction::SouthEast) | pawns.shift(Direction::SouthWest)
+    };
+    info.pawn_attacks[S::IDX] = pawn_attacks;
+    info.all_attacks[S::IDX] |= pawn_attacks;
 
     // Find passed pawns
     let stoppers =
@@ -198,8 +224,11 @@ fn evaluate_knights<S: Side>(
         score.add::<S>(params.knight_pst[sq]);
 
         // Mobility/attacks
-        let attacks = bbs.knight_attacks(knight) & !own_occ;
-        info.knight_attacks[S::THEM] += (attacks & info.king_ring[S::THEM]).bit_count();
+        let control = bbs.knight_attacks(knight);
+        let attacks = control & !own_occ;
+        info.king_ring_knight_hits[S::THEM] += (control & info.king_ring[S::THEM]).bit_count();
+        info.knight_attacks[S::IDX] |= control;
+        info.all_attacks[S::IDX] |= control;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.knight_mobility[mobility]);
@@ -264,8 +293,11 @@ fn evaluate_bishops<S: Side>(
         score.add::<S>(params.bishop_pst[sq]);
 
         // Mobility/attacks
-        let attacks = bbs.bishop_attacks(bishop, occ) & !own_occ;
-        info.bishop_attacks[S::THEM] += (attacks & info.king_ring[S::THEM]).bit_count();
+        let control = bbs.bishop_attacks(bishop, occ);
+        let attacks = control & !own_occ;
+        info.king_ring_bishop_hits[S::THEM] += (control & info.king_ring[S::THEM]).bit_count();
+        info.bishop_attacks[S::IDX] |= control;
+        info.all_attacks[S::IDX] |= control;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.bishop_mobility[mobility]);
@@ -326,8 +358,11 @@ fn evaluate_rooks<S: Side>(
         score.add::<S>(params.rook_pst[sq]);
 
         // Mobility/attacks
-        let attacks = bbs.rook_attacks(rook, occ) & !own_occ;
-        info.rook_attacks[S::THEM] += (attacks & info.king_ring[S::THEM]).bit_count();
+        let control = bbs.rook_attacks(rook, occ);
+        let attacks = control & !own_occ;
+        info.king_ring_rook_hits[S::THEM] += (control & info.king_ring[S::THEM]).bit_count();
+        info.rook_attacks[S::IDX] |= control;
+        info.all_attacks[S::IDX] |= control;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.rook_mobility[mobility]);
@@ -401,8 +436,11 @@ fn evaluate_queens<S: Side>(
         }
 
         // Mobility/attacks
-        let attacks = (bbs.bishop_attacks(queen, occ) | bbs.rook_attacks(queen, occ)) & !own_occ;
-        info.queen_attacks[S::THEM] += (attacks & info.king_ring[S::THEM]).bit_count();
+        let control = bbs.bishop_attacks(queen, occ) | bbs.rook_attacks(queen, occ);
+        let attacks = control & !own_occ;
+        info.king_ring_queen_hits[S::THEM] += (control & info.king_ring[S::THEM]).bit_count();
+        info.queen_attacks[S::IDX] |= control;
+        info.all_attacks[S::IDX] |= control;
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.queen_mobility[mobility]);
@@ -447,36 +485,28 @@ fn evaluate_king_safety<S: Side>(
     let mut mg_units = 0;
     let mut eg_units = 0;
 
-    let enemy_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
-
-    // Pawns in bulk
-    let pawn_attacks = if S::IS_WHITE {
-        enemy_pawns.shift(Direction::SouthEast) | enemy_pawns.shift(Direction::SouthWest)
-    } else {
-        enemy_pawns.shift(Direction::NorthEast) | enemy_pawns.shift(Direction::NorthWest)
-    };
     let w = params.king_ring_pawn_weight;
-    let hits = (pawn_attacks & info.king_ring[S::IDX]).bit_count() as i32;
+    let hits = (info.pawn_attacks[S::THEM] & info.king_ring[S::IDX]).bit_count() as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
     let w = params.king_ring_knight_weight;
-    let hits = info.knight_attacks[S::IDX] as i32;
+    let hits = info.king_ring_knight_hits[S::IDX] as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
     let w = params.king_ring_bishop_weight;
-    let hits = info.bishop_attacks[S::IDX] as i32;
+    let hits = info.king_ring_bishop_hits[S::IDX] as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
     let w = params.king_ring_rook_weight;
-    let hits = info.rook_attacks[S::IDX] as i32;
+    let hits = info.king_ring_rook_hits[S::IDX] as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
     let w = params.king_ring_queen_weight;
-    let hits = info.queen_attacks[S::IDX] as i32;
+    let hits = info.king_ring_queen_hits[S::IDX] as i32;
     mg_units += w.mg * hits;
     eg_units += w.eg * hits;
 
@@ -514,6 +544,39 @@ fn evaluate_king_safety<S: Side>(
     }
 }
 
+fn evaluate_threats<S: Side>(pos: &Position, score: &mut Score, info: &EvalInfo, params: &Params) {
+    let their_minors =
+        pos.pieces[S::THEM][Piece::Knight.idx()] | pos.pieces[S::THEM][Piece::Bishop.idx()];
+    let their_majors =
+        pos.pieces[S::THEM][Piece::Rook.idx()] | pos.pieces[S::THEM][Piece::Queen.idx()];
+    let their_rooks = pos.pieces[S::THEM][Piece::Rook.idx()];
+    let their_queen = pos.pieces[S::THEM][Piece::Queen.idx()];
+
+    let pawn_threat_minors = their_minors & info.pawn_attacks[S::IDX];
+    let pawn_threat_majors = their_majors & info.pawn_attacks[S::IDX];
+
+    let hanging_minors = their_minors & info.all_attacks[S::IDX] & !info.all_attacks[S::THEM];
+    let hanging_rooks = their_rooks & info.all_attacks[S::IDX] & !info.all_attacks[S::THEM];
+    let hanging_queen = their_queen & info.all_attacks[S::IDX] & !info.all_attacks[S::THEM];
+
+    let queen_hit_by_minor =
+        their_queen & (info.knight_attacks[S::IDX] | info.bishop_attacks[S::IDX]);
+    let queen_hit_by_rook = their_queen & info.rook_attacks[S::IDX];
+
+    score.add::<S>(params.pawn_threat_minor * pawn_threat_minors.bit_count().min(2) as i32);
+    score.add::<S>(params.pawn_threat_major * pawn_threat_majors.bit_count().min(2) as i32);
+    score.add::<S>(params.hanging_minor * hanging_minors.bit_count().min(2) as i32);
+    score.add::<S>(params.hanging_rook * hanging_rooks.bit_count().min(2) as i32);
+
+    if !hanging_queen.is_empty() {
+        score.add::<S>(params.hanging_queen);
+    } else if !queen_hit_by_rook.is_empty() {
+        score.add::<S>(params.rook_threat_queen);
+    } else if !queen_hit_by_minor.is_empty() {
+        score.add::<S>(params.minor_threat_queen);
+    }
+}
+
 fn taper(score: Score, phase: i32, us: Colour) -> Eval {
     let mg_phase = phase.min(24);
     let eg_phase = 24 - mg_phase;
@@ -534,8 +597,8 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     let mut info = EvalInfo::init(pos, bbs);
     let phase = game_phase(pos);
 
-    evaluate_pawns::<White>(pos, &mut score, params);
-    evaluate_pawns::<Black>(pos, &mut score, params);
+    evaluate_pawns::<White>(pos, &mut score, &mut info, params);
+    evaluate_pawns::<Black>(pos, &mut score, &mut info, params);
 
     evaluate_knights::<White>(pos, &mut score, &mut info, params);
     evaluate_knights::<Black>(pos, &mut score, &mut info, params);
@@ -548,6 +611,9 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
 
     evaluate_queens::<White>(pos, &mut score, &mut info, params);
     evaluate_queens::<Black>(pos, &mut score, &mut info, params);
+
+    evaluate_threats::<White>(pos, &mut score, &mut info, params);
+    evaluate_threats::<Black>(pos, &mut score, &mut info, params);
 
     evaluate_king_safety::<White>(pos, &mut score, &mut info, params);
     evaluate_king_safety::<Black>(pos, &mut score, &mut info, params);

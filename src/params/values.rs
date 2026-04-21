@@ -6,7 +6,7 @@ macro_rules! s {
     };
 }
 
-pub const PARAM_COUNT: usize = 42;
+pub const PARAM_COUNT: usize = 49;
 pub const LAZY_PARAM_COUNT: usize = 11;
 
 pub const PIECE_VALUES: [Score; 5] = [
@@ -58,6 +58,14 @@ pub const KING_PAWN_SHIELD_DISTANCE: [Score; 4] =
 pub const KING_SHIELD_MISSING_PAWN: Score = s!(-21, 0);
 pub const QUEEN_UNDEVELOPED_PIECE_PUNISHMENT: Score = s!(-8, 0);
 pub const QUEEN_UNMOVED_KING_PUNISHMENT: Score = s!(-6, 0);
+
+pub const PAWN_THREAT_MINOR: Score = s!(18, 6);
+pub const PAWN_THREAT_MAJOR: Score = s!(34, 10);
+pub const HANGING_MINOR: Score = s!(28, 8);
+pub const HANGING_ROOK: Score = s!(56, 16);
+pub const HANGING_QUEEN: Score = s!(96, 24);
+pub const MINOR_THREAT_QUEEN: Score = s!(20, 4);
+pub const ROOK_THREAT_QUEEN: Score = s!(32, 8);
 
 pub const ENEMY_PAWN_DISTANCE_FROM_BACKRANK: [Score; 4] =
     [s!(0, -7), s!(-19, -1), s!(-8, -1), s!(-1, -4)];

@@ -31,6 +31,14 @@ pub struct Params {
     pub queen_undeveloped_piece_punishment: Score,
     pub queen_unmoved_king_punishment: Score,
 
+    pub pawn_threat_minor: Score,
+    pub pawn_threat_major: Score,
+    pub hanging_minor: Score,
+    pub hanging_rook: Score,
+    pub hanging_queen: Score,
+    pub minor_threat_queen: Score,
+    pub rook_threat_queen: Score,
+
     pub doubled_pawns: Score,
     pub tripled_pawns: Score,
     pub quadrupled_pawns: Score,
@@ -101,6 +109,14 @@ pub const DEFAULT_PARAMS: Params = Params {
 
     queen_undeveloped_piece_punishment: QUEEN_UNDEVELOPED_PIECE_PUNISHMENT,
     queen_unmoved_king_punishment: QUEEN_UNMOVED_KING_PUNISHMENT,
+
+    pawn_threat_minor: PAWN_THREAT_MINOR,
+    pawn_threat_major: PAWN_THREAT_MAJOR,
+    hanging_minor: HANGING_MINOR,
+    hanging_rook: HANGING_ROOK,
+    hanging_queen: HANGING_QUEEN,
+    minor_threat_queen: MINOR_THREAT_QUEEN,
+    rook_threat_queen: ROOK_THREAT_QUEEN,
 
     doubled_pawns: DOUBLED_PAWNS,
     tripled_pawns: TRIPLED_PAWNS,
