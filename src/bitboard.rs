@@ -7,11 +7,17 @@ use std::{
 use crate::types::{self, Colour, Direction, Piece, Square};
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Default, Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Bitboard(u64);
 
 impl Bitboard {
     pub const FILE_A: Bitboard = Bitboard(types::FILE_A);
+    pub const FILE_B: Bitboard = Bitboard(types::FILE_B);
+    pub const FILE_C: Bitboard = Bitboard(types::FILE_C);
+    pub const FILE_D: Bitboard = Bitboard(types::FILE_D);
+    pub const FILE_E: Bitboard = Bitboard(types::FILE_E);
+    pub const FILE_F: Bitboard = Bitboard(types::FILE_F);
+    pub const FILE_G: Bitboard = Bitboard(types::FILE_G);
     pub const FILE_H: Bitboard = Bitboard(types::FILE_H);
 
     pub const RANK_1: Bitboard = Bitboard(types::RANK_1);
@@ -22,6 +28,9 @@ impl Bitboard {
     pub const RANK_6: Bitboard = Bitboard(types::RANK_6);
     pub const RANK_7: Bitboard = Bitboard(types::RANK_7);
     pub const RANK_8: Bitboard = Bitboard(types::RANK_8);
+
+    pub const LIGHT_SQUARES: Bitboard = Bitboard(0x55AA_55AA_55AA_55AA);
+    pub const DARK_SQUARES: Bitboard = Bitboard(0xAA55_AA55_AA55_AA55);
 
     #[inline(always)]
     pub const fn new(bb: u64) -> Self {
@@ -65,6 +74,74 @@ impl Bitboard {
     #[inline(always)]
     pub const fn lsb_bb(self) -> u64 {
         self.0 & self.0.wrapping_neg()
+    }
+
+    #[inline(always)]
+    pub fn msb(self) -> Square {
+        debug_assert!(self.0 != 0);
+        Square::new(63 - self.0.leading_zeros() as u8)
+    }
+
+    #[inline(always)]
+    pub fn north_fill(self) -> Bitboard {
+        let mut bb = self;
+        bb |= bb << 8;
+        bb |= bb << 16;
+        bb |= bb << 32;
+        bb
+    }
+
+    #[inline(always)]
+    pub fn south_fill(self) -> Bitboard {
+        let mut bb = self;
+        bb |= bb >> 8;
+        bb |= bb >> 16;
+        bb |= bb >> 32;
+        bb
+    }
+
+    #[inline(always)]
+    pub fn frontfill(self, c: Colour) -> Bitboard {
+        if c == Colour::White {
+            self.north_fill()
+        } else {
+            self.south_fill()
+        }
+    }
+
+    #[inline(always)]
+    pub fn backfill(self, c: Colour) -> Bitboard {
+        if c == Colour::White {
+            self.south_fill()
+        } else {
+            self.north_fill()
+        }
+    }
+
+    #[inline(always)]
+    pub fn file(n: u8) -> Bitboard {
+        debug_assert!(n < 8);
+
+        match n {
+            0 => Self::FILE_A,
+            1 => Self::FILE_B,
+            2 => Self::FILE_C,
+            3 => Self::FILE_D,
+            4 => Self::FILE_E,
+            5 => Self::FILE_F,
+            6 => Self::FILE_G,
+            7 => Self::FILE_H,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn file_occupied(&self, file: u8) -> bool {
+        debug_assert!(file < 8);
+
+        let file_bb = Self::file(file);
+
+        !(*self & file_bb).is_empty()
     }
 
     #[inline(always)]
