@@ -1,21 +1,24 @@
 use core::f64;
 use rayon::prelude::*;
-use std::{cmp::Reverse, marker::Sync};
+use std::marker::Sync;
 
-use crate::movegen::{MoveList, generate_legal};
+use crate::movepick::MovePicker;
 use crate::{
     evaluate::{Eval, INFINITY},
-    movegen::generate_legal_noisy,
     position::{Position, StateInfo},
     search::OrderingTables,
     tuning::types::Sample,
-    types::Colour,
+    types::{Colour, Move},
 };
+
+static TEXEL_ORDERING: OrderingTables = OrderingTables::new();
 
 fn texel_qsearch<P, E>(
     pos: &mut Position,
     params: &P,
     eval: &E,
+    ordering: &OrderingTables,
+    ply: usize,
     mut alpha: Eval,
     beta: Eval,
 ) -> Eval
@@ -41,22 +44,23 @@ where
         stand_pat
     };
 
-    let mut moves = if in_check {
-        generate_legal(pos, &mut MoveList::new())
-    } else {
-        generate_legal_noisy(pos, &mut MoveList::new())
-    };
+    let mut mp = MovePicker::new(in_check, Move::NULL, Move::NULL, 0, ply);
+    let mut state = StateInfo::new();
 
-    let ordering = OrderingTables::new();
-    moves
-        .as_mut_slice()
-        .sort_unstable_by_key(|&mv| Reverse(ordering.score_noisy(pos, mv)));
+    // Search through all moves until a beta cutoff or none left
+    while let Some(mv) = mp.next(pos, ordering) {
+        if !pos.is_legal(mv) {
+            continue;
+        }
 
-    for &mv in moves.as_slice() {
-        let mut state = StateInfo::new();
+        // Allow all legal evasions when in check, but
+        // only allow tactical moves when not in check
+        if !in_check && !(mv.is_capture() || mv.is_promotion()) {
+            continue;
+        }
+
         pos.make_move(mv, &mut state);
-
-        let score = -texel_qsearch(pos, params, eval, -beta, -alpha);
+        let score = -texel_qsearch(pos, params, eval, ordering, ply + 1, -beta, -alpha);
 
         pos.undo_move(mv, &state);
 
@@ -75,7 +79,7 @@ fn texel_root_qsearch<P, E>(pos: &mut Position, params: &P, eval: &E) -> Eval
 where
     E: Fn(&Position, &P) -> Eval + Sync,
 {
-    let score = texel_qsearch(pos, params, eval, -INFINITY, INFINITY);
+    let score = texel_qsearch(pos, params, eval, &TEXEL_ORDERING, 0, -INFINITY, INFINITY);
 
     return if pos.side_to_move == Colour::White {
         score

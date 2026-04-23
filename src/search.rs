@@ -173,7 +173,7 @@ fn history_bonus(depth: i32) -> i32 {
 }
 
 impl OrderingTables {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             killers: [[Move::NULL; 2]; MAX_PLY],
             history: [[[0; 64]; 64]; 2],
@@ -204,7 +204,7 @@ impl OrderingTables {
     }
 
     #[inline(always)]
-    pub fn score_noisy(&self, pos: &Position, mv: Move) -> i32 {
+    pub fn score_noisy(pos: &Position, mv: Move) -> i32 {
         let mut score = 0;
 
         // Score capture moves according to MVV-LVA
@@ -251,7 +251,7 @@ impl OrderingTables {
     #[inline(always)]
     pub fn score_evasion(&self, pos: &Position, mv: Move, ply: usize) -> i32 {
         if mv.is_capture() || mv.is_promotion() {
-            self.score_noisy(pos, mv)
+            Self::score_noisy(pos, mv)
         } else {
             self.score_quiet(pos, mv, ply)
         }

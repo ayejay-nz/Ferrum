@@ -274,10 +274,10 @@ where
         config.project(&mut params);
         theta = config.pack(&params);
 
-        // Only calculate exact loss every 100 iterations as
+        // Only calculate exact loss every 25 iterations as
         // this saves ~30% of optimisation compute time.
         // Otherwise, use an approximation for current loss
-        if t % 100 == 0 || should_snapshot {
+        if t % 25 == 0 || should_snapshot {
             current_loss = loss_fn(&params);
 
             println!("{}", describe(&params));
