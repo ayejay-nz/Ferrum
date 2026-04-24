@@ -6,7 +6,7 @@ macro_rules! s {
     };
 }
 
-pub const PARAM_COUNT: usize = 49;
+pub const PARAM_COUNT: usize = 59;
 pub const LAZY_PARAM_COUNT: usize = 11;
 
 pub const PIECE_VALUES: [Score; 5] = [
@@ -66,9 +66,14 @@ pub const BISHOP_SAME_COLOUR_PAWNS: [Score; 9] = [
     s!(-10, 23),
 ];
 pub const FIANCHETTO: Score = s!(13, 1);
+pub const BISHOP_OUTPOST: Score = s!(19, -3);
+pub const DEFENDED_BISHOP_OUTPOST: Score = s!(42, -3);
 
 pub const ROOK_OPEN_FILE: Score = s!(49, -3);
 pub const ROOK_SEMI_OPEN_FILE: Score = s!(16, 10);
+pub const ROOK_ON_SEVENTH: Score = s!(8, 10);
+pub const ROOK_ON_QUEEN_FILE: Score = s!(6, 28);
+pub const CONNECTED_DOUBLED_ROOKS: Score = s!(10, 19);
 
 pub const KING_ON_SEMI_OPEN_FILE: Score = s!(-14, 21);
 pub const KING_ON_OPEN_FILE: Score = s!(-61, -7);

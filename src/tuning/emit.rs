@@ -173,6 +173,18 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
         fmt_score(params.fianchetto)
     )
     .unwrap();
+    writeln!(
+        &mut out,
+        "pub const BISHOP_OUTPOST: Score = {};",
+        fmt_score(params.bishop_outpost)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const DEFENDED_BISHOP_OUTPOST: Score = {};",
+        fmt_score(params.defended_bishop_outpost)
+    )
+    .unwrap();
     writeln!(&mut out).unwrap();
 
     writeln!(
@@ -185,6 +197,24 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
         &mut out,
         "pub const ROOK_SEMI_OPEN_FILE: Score = {};",
         fmt_score(params.rook_semi_open_file)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const ROOK_ON_SEVENTH: Score = {};",
+        fmt_score(params.rook_on_seventh)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const ROOK_ON_QUEEN_FILE: Score = {};",
+        fmt_score(params.rook_on_queen_file)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const CONNECTED_DOUBLED_ROOKS: Score = {};",
+        fmt_score(params.connected_doubled_rooks)
     )
     .unwrap();
     writeln!(&mut out).unwrap();

@@ -380,6 +380,27 @@ fn evaluate_bishops<S: Side>(
         } else {
             score.add::<S>(params.bishop_same_colour_pawns[dark_pawns]);
         }
+
+        // Bishop outposts
+        // Only care about bishops in opponent half of the board
+        let rank = relative_rank::<S>(bishop);
+        if rank < 4 {
+            continue;
+        }
+
+        // Opponent pawns on adjacent files in front of the bishop can challenge it
+        let front = bishop.bitboard().frontfill(S::COLOUR) ^ bishop.bitboard();
+        let adj_files = front.shift(Direction::East) | front.shift(Direction::West);
+        let challengers = pos.pieces[S::THEM][Piece::Pawn.idx()] & adj_files;
+
+        if challengers.is_empty() {
+            // If own pawn supports outpost
+            if !(bbs.pawn_attacks(bishop, S::COLOUR.opposite()) & pawns).is_empty() {
+                score.add::<S>(params.defended_bishop_outpost);
+            } else {
+                score.add::<S>(params.bishop_outpost);
+            }
+        }
     }
 }
 
@@ -407,6 +428,7 @@ fn evaluate_rooks<S: Side>(
     while !rooks.is_empty() {
         let rook = rooks.pop_lsb();
         let file = rook.file();
+        let file_bb = rook.file_bb();
 
         // PST eval
         let sq = relative_square::<S>(rook);
@@ -421,6 +443,34 @@ fn evaluate_rooks<S: Side>(
         let mobility = attacks.bit_count() as usize;
 
         score.add::<S>(params.rook_mobility[mobility]);
+
+        // Connected rooks on same file
+        let connected_doubled = control & rooks & file_bb;
+        if !connected_doubled.is_empty() {
+            score.add::<S>(params.connected_doubled_rooks);
+        }
+
+        // Rook on same file as queen
+        let queens =
+            pos.pieces[S::IDX][Piece::Queen.idx()] | pos.pieces[S::THEM][Piece::Queen.idx()];
+        if !(file_bb & queens).is_empty() {
+            score.add::<S>(params.rook_on_queen_file);
+        }
+
+        // Rook on 7th/2nd rank
+        // Only concern ourselves with this feature if the opponent has
+        // pawns on the starting rank or king on the backrank
+        let (seventh, backrank) = if S::IS_WHITE {
+            (Bitboard::RANK_7, Bitboard::RANK_8)
+        } else {
+            (Bitboard::RANK_2, Bitboard::RANK_1)
+        };
+        if !(rook.bitboard() & seventh).is_empty()
+            && (!(pos.pieces[S::THEM][Piece::Pawn.idx()] & seventh).is_empty()
+                || !(pos.pieces[S::THEM][Piece::King.idx()] & backrank).is_empty())
+        {
+            score.add::<S>(params.rook_on_seventh);
+        }
 
         // Open/semi open files
         let own_on_file = own_pawns.file_occupied(file);

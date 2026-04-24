@@ -24,9 +24,14 @@ pub struct Params {
     pub bishop_pair: Score,
     pub bishop_same_colour_pawns: [Score; 9],
     pub fianchetto: Score,
+    pub bishop_outpost: Score,
+    pub defended_bishop_outpost: Score,
 
     pub rook_open_file: Score,
     pub rook_semi_open_file: Score,
+    pub rook_on_seventh: Score,
+    pub rook_on_queen_file: Score,
+    pub connected_doubled_rooks: Score,
 
     pub queen_undeveloped_piece_punishment: Score,
     pub queen_unmoved_king_punishment: Score,
@@ -108,9 +113,14 @@ pub const DEFAULT_PARAMS: Params = Params {
     bishop_pair: BISHOP_PAIR,
     bishop_same_colour_pawns: BISHOP_SAME_COLOUR_PAWNS,
     fianchetto: FIANCHETTO,
+    bishop_outpost: BISHOP_OUTPOST,
+    defended_bishop_outpost: DEFENDED_BISHOP_OUTPOST,
 
     rook_open_file: ROOK_OPEN_FILE,
     rook_semi_open_file: ROOK_SEMI_OPEN_FILE,
+    rook_on_seventh: ROOK_ON_SEVENTH,
+    rook_on_queen_file: ROOK_ON_QUEEN_FILE,
+    connected_doubled_rooks: CONNECTED_DOUBLED_ROOKS,
 
     queen_undeveloped_piece_punishment: QUEEN_UNDEVELOPED_PIECE_PUNISHMENT,
     queen_unmoved_king_punishment: QUEEN_UNMOVED_KING_PUNISHMENT,

@@ -149,9 +149,14 @@ impl TuningConfig for FullTuningConfig {
         push_score(&mut out, params.bishop_pair);
         push_score_array(&mut out, &params.bishop_same_colour_pawns);
         push_score(&mut out, params.fianchetto);
+        push_score(&mut out, params.bishop_outpost);
+        push_score(&mut out, params.defended_bishop_outpost);
 
         push_score(&mut out, params.rook_open_file);
         push_score(&mut out, params.rook_semi_open_file);
+        push_score(&mut out, params.rook_on_seventh);
+        push_score(&mut out, params.rook_on_queen_file);
+        push_score(&mut out, params.connected_doubled_rooks);
 
         push_score(&mut out, params.queen_undeveloped_piece_punishment);
         push_score(&mut out, params.queen_unmoved_king_punishment);
@@ -222,9 +227,14 @@ impl TuningConfig for FullTuningConfig {
             bishop_pair: next_score(&mut it),
             bishop_same_colour_pawns: next_score_array(&mut it),
             fianchetto: next_score(&mut it),
+            bishop_outpost: next_score(&mut it),
+            defended_bishop_outpost: next_score(&mut it),
 
             rook_open_file: next_score(&mut it),
             rook_semi_open_file: next_score(&mut it),
+            rook_on_seventh: next_score(&mut it),
+            rook_on_queen_file: next_score(&mut it),
+            connected_doubled_rooks: next_score(&mut it),
 
             queen_undeveloped_piece_punishment: next_score(&mut it),
             queen_unmoved_king_punishment: next_score(&mut it),
@@ -293,8 +303,13 @@ impl TuningConfig for FullTuningConfig {
             bishop_pair,
             bishop_same_colour_pawns,
             fianchetto,
+            bishop_outpost,
+            defended_bishop_outpost,
             rook_open_file,
             rook_semi_open_file,
+            rook_on_seventh,
+            rook_on_queen_file,
+            connected_doubled_rooks,
             queen_undeveloped_piece_punishment,
             queen_unmoved_king_punishment,
             pawn_threat_minor,
@@ -352,9 +367,14 @@ impl TuningConfig for FullTuningConfig {
         push_score_bounds(&mut out, bishop_pair);
         push_score_array_bounds::<9>(&mut out, bishop_same_colour_pawns);
         push_score_bounds(&mut out, fianchetto);
+        push_score_bounds(&mut out, bishop_outpost);
+        push_score_bounds(&mut out, defended_bishop_outpost);
 
         push_score_bounds(&mut out, rook_open_file);
         push_score_bounds(&mut out, rook_semi_open_file);
+        push_score_bounds(&mut out, rook_on_seventh);
+        push_score_bounds(&mut out, rook_on_queen_file);
+        push_score_bounds(&mut out, connected_doubled_rooks);
 
         push_score_bounds(&mut out, queen_undeveloped_piece_punishment);
         push_score_bounds(&mut out, queen_unmoved_king_punishment);
@@ -408,22 +428,22 @@ impl TuningConfig for FullTuningConfig {
     /// Normalise knight/rook adjustment tables, bishop same colour pawns, and all mobility scores.
     /// Results in piece values more accurately representing their true value.
     fn project(&self, params: &mut Self::ParamType) {
-        if self.meta[33].active {
+        if self.meta[38].active {
             make_nondecreasing(&mut params.candidate_passer);
         }
-        if self.meta[34].active {
+        if self.meta[39].active {
             make_nondecreasing(&mut params.connected_bonus);
         }
 
         params.supported_bonus[0].mg = 0;
         params.supported_bonus[0].eg = 0;
-        if self.meta[35].active {
+        if self.meta[40].active {
             make_nondecreasing(&mut params.supported_bonus);
         }
-        if self.meta[36].active {
+        if self.meta[41].active {
             make_nondecreasing(&mut params.passed_pawn);
         }
-        if self.meta[33].active || self.meta[36].active {
+        if self.meta[38].active || self.meta[41].active {
             for i in 0..6 {
                 params.candidate_passer[i].mg =
                     params.candidate_passer[i].mg.min(params.passed_pawn[i].mg);
@@ -431,18 +451,18 @@ impl TuningConfig for FullTuningConfig {
                     params.candidate_passer[i].eg.min(params.passed_pawn[i].eg);
             }
         }
-        if self.meta[47].active {
+        if self.meta[52].active {
             make_nonincreasing(&mut params.king_ring_attacks);
         }
 
-        if self.meta[48].active {
+        if self.meta[53].active {
             make_nondecreasing(&mut params.knight_adj);
 
             if self.meta[7].active {
                 normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
             }
         }
-        if self.meta[49].active {
+        if self.meta[54].active {
             make_nonincreasing(&mut params.rook_adj);
 
             if self.meta[9].active {
@@ -450,12 +470,12 @@ impl TuningConfig for FullTuningConfig {
             }
         }
 
-        if self.meta[28].active {
+        if self.meta[33].active {
             params.tripled_pawns.mg = params.tripled_pawns.mg.min(params.doubled_pawns.mg);
             params.tripled_pawns.eg = params.tripled_pawns.eg.min(params.doubled_pawns.eg);
         }
 
-        if self.meta[29].active {
+        if self.meta[34].active {
             params.quadrupled_pawns.mg = params.quadrupled_pawns.mg.min(params.tripled_pawns.mg);
             params.quadrupled_pawns.eg = params.quadrupled_pawns.eg.min(params.tripled_pawns.eg);
         }
@@ -471,7 +491,7 @@ impl TuningConfig for FullTuningConfig {
         }
 
         // Threat values
-        if self.meta[20].active || self.meta[21].active {
+        if self.meta[25].active || self.meta[26].active {
             params.pawn_threat_major.mg = params
                 .pawn_threat_major
                 .mg
@@ -481,25 +501,25 @@ impl TuningConfig for FullTuningConfig {
                 .eg
                 .max(params.pawn_threat_minor.eg + 1);
         }
-        if self.meta[22].active || self.meta[23].active {
+        if self.meta[27].active || self.meta[28].active {
             params.hanging_rook.mg = params.hanging_rook.mg.max(params.hanging_minor.mg + 1);
             params.hanging_rook.eg = params.hanging_rook.eg.max(params.hanging_minor.eg + 1);
         }
-        if self.meta[23].active || self.meta[24].active {
+        if self.meta[28].active || self.meta[29].active {
             params.hanging_queen.mg = params.hanging_queen.mg.max(params.hanging_rook.mg + 1);
             params.hanging_queen.eg = params.hanging_queen.eg.max(params.hanging_rook.eg + 1);
         }
 
-        if self.meta[7].active && self.meta[50].active {
+        if self.meta[7].active && self.meta[55].active {
             normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
         }
-        if self.meta[8].active && self.meta[51].active {
+        if self.meta[8].active && self.meta[56].active {
             normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
         }
-        if self.meta[9].active && self.meta[52].active {
+        if self.meta[9].active && self.meta[57].active {
             normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
         }
-        if self.meta[10].active && self.meta[53].active {
+        if self.meta[10].active && self.meta[58].active {
             normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
         }
 
@@ -510,7 +530,7 @@ impl TuningConfig for FullTuningConfig {
             );
         }
 
-        if self.meta[47].active {
+        if self.meta[52].active {
             normalise_king_ring(&mut params.king_ring_attacks);
         }
 
@@ -645,71 +665,76 @@ impl TuningConfig for LazyTuningConfig {
 
 #[rustfmt::skip]
 pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
-    m!(b!(-50, 200), true), // 0 - pawn pst
-    m!(b!(-200, 200), true), // 1 - knight pst
-    m!(b!(-100, 100), true), // 2 - bishop pst
-    m!(b!(-100, 100), true), // 3 - rook pst
-    m!(b!(-200, 200), true), // 4 - queen pst
-    m!(b!(-200, 200), true), // 5 - king pst
+    m!(b!(-50, 200), false),  // 0 - pawn pst
+    m!(b!(-200, 200), false), // 1 - knight pst
+    m!(b!(-100, 100), false), // 2 - bishop pst
+    m!(b!(-100, 100), true),  // 3 - rook pst
+    m!(b!(-200, 200), false), // 4 - queen pst
+    m!(b!(-200, 200), false), // 5 - king pst
 
-    m!(b!(70, 100), true),  // 6 - pawn value
-    m!(b!(240, 360), true), // 7 - knight value
-    m!(b!(250, 370), true), // 8 - bishop value
-    m!(b!(400, 560), true), // 9 - rook value
-    m!(b!(850, 1100), true), // 10 - queen value
+    m!(b!(70, 100), false),   // 6 - pawn value
+    m!(b!(240, 360), false),  // 7 - knight value
+    m!(b!(250, 370), false),  // 8 - bishop value
+    m!(b!(400, 560), true),   // 9 - rook value
+    m!(b!(850, 1100), false), // 10 - queen value
 
-    m!(b!(-5, 30), false),   // 11 - knight outpost
-    m!(b!(-5, 60), false),   // 12 - defended knight outpost
+    m!(b!(-5, 30), false),    // 11 - knight outpost
+    m!(b!(-5, 60), false),    // 12 - defended knight outpost
 
-    m!(b!(-5, 100), false),  // 13 - bishop pair
-    m!(b!(-50, 30), false),  // 14 - bishop same colour pawns
-    m!(b!(-20, 40), false),  // 15 - fianchettoed bishop
+    m!(b!(-5, 100), false),   // 13 - bishop pair
+    m!(b!(-50, 30), false),   // 14 - bishop same colour pawns
+    m!(b!(-20, 40), false),   // 15 - fianchettoed bishop
+    m!(b!(-5, 30), false),    // 16 - bishop outpost
+    m!(b!(-5, 60), false),    // 17 - defended bishop outpost
 
-    m!(b!(-5, 100), false),  // 16 - rook open file
-    m!(b!(-5, 100), false),  // 17 - rook semi-open file
+    m!(b!(-5, 100), true),    // 18 - rook open file
+    m!(b!(-5, 100), true),    // 19 - rook semi-open file
+    m!(b!(-5, 100), true),    // 20 - rook on seventh
+    m!(b!(-5, 40), true),     // 21 - rook on queen file
+    m!(b!(-5, 60), true),     // 22 - connected doubled rooks
 
-    m!(b!(-20, 0), false),   // 18 - queen undeveloped piece punishment
-    m!(b!(-20, 0), false),   // 19 - queen unmoved king punishment
+    m!(b!(-20, 0), false),    // 23 - queen undeveloped piece punishment
+    m!(b!(-20, 0), false),    // 24 - queen unmoved king punishment
 
-    m!(b!(0, 40), false),    // 20 - pawn threat minor
-    m!(b!(0, 80), false),    // 21 - pawn threat major
-    m!(b!(0, 60), false),    // 22 - hanging minor
-    m!(b!(0, 120), false),   // 23 - hanging rook
-    m!(b!(0, 180), false),   // 24 - hanging queen
-    m!(b!(0, 50), false),    // 25 - minor threat queen
-    m!(b!(0, 70), false),    // 26 - rook threat queen
+    m!(b!(0, 40), false),     // 25 - pawn threat minor
+    m!(b!(0, 80), false),     // 26 - pawn threat major
+    m!(b!(0, 60), false),     // 27 - hanging minor
+    m!(b!(0, 120), false),     // 28 - hanging rook
+    m!(b!(0, 180), false),    // 29 - hanging queen
+    m!(b!(0, 50), false),     // 30 - minor threat queen
+    m!(b!(0, 70), false),      // 31 - rook threat queen
 
-    m!(b!(-100, -1), false),  // 27 - doubled pawns
-    m!(b!(-200, -1), true),   // 28 - tripled pawns
-    m!(b!(-400, -50), false), // 29 - quadrupled pawns
-    m!(b!(-50, 10), false),   // 30 - isolated pawn
-    m!(b!(-50, 10), false),   // 31 - backward pawn
-    m!(b!(-25, 0), false),    // 32 - weak unopposed
-    m!(b!(0, 80), false),     // 33 - candidate passer
-    m!(b!(0, 20), false),     // 34 - connected bonus
-    m!(b!(0, 15), false),     // 35 - supported bonus
-    m!(b!(-5, 200), false),   // 36 - passed pawn
+    m!(b!(-100, -1), false),  // 32 - doubled pawns
+    m!(b!(-200, -1), false),  // 33 - tripled pawns
+    m!(b!(-400, -50), false), // 34 - quadrupled pawns
+    m!(b!(-50, 10), false),   // 35 - isolated pawn
+    m!(b!(-50, 10), false),   // 36 - backward pawn
+    m!(b!(-25, 0), false),    // 37 - weak unopposed
+    m!(b!(0, 80), false),     // 38 - candidate passer
+    m!(b!(0, 20), false),     // 39 - connected bonus
+    m!(b!(0, 15), false),     // 40 - supported bonus
+    m!(b!(-5, 200), false),   // 41 - passed pawn
 
-    m!(b!(-75, 5), false),   // 37 - king on open file
-    m!(b!(-40, 40), false),  // 38 - king on semi open file
-    m!(b!(-75, 0), false),   // 39 - king shield missing pawn
-    m!(b!(-40, 40), false),  // 40 - king pawn shield distance
-    m!(b!(-50, 0), false),   // 41 - enemy pawn distance from backrank
+    m!(b!(-75, 5), false),    // 42 - king on open file
+    m!(b!(-40, 40), false),   // 43 - king on semi open file
+    m!(b!(-75, 0), false),    // 44 - king shield missing pawn
+    m!(b!(-40, 40), false),   // 45 - king pawn shield distance
+    m!(b!(-50, 0), false),    // 46 - enemy pawn distance from backrank
 
-    m!(b!(1, 2), false),     // 42 - king ring pawn weights
-    m!(b!(2, 3), false),     // 43 - king ring knight weights
-    m!(b!(2, 3), false),     // 44 - king ring bishop weights
-    m!(b!(3, 4), false),     // 45 - king ring rook weights
-    m!(b!(4, 5), false),     // 46 - king ring queen weights
-    m!(b!(-200, 20), false), // 47 - king ring attacks
+    m!(b!(1, 2), false),      // 47 - king ring pawn weights
+    m!(b!(2, 3), false),      // 48 - king ring knight weights
+    m!(b!(2, 3), false),      // 49 - king ring bishop weights
+    m!(b!(3, 4), false),      // 50 - king ring rook weights
+    m!(b!(4, 5), false),      // 51 - king ring queen weights
+    m!(b!(-200, 20), false),  // 52 - king ring attacks
 
-    m!(b!(-60, 60), false),  // 48 - knight adj
-    m!(b!(-60, 60), false),  // 49 - rook adj
+    m!(b!(-60, 60), false),   // 53 - knight adj
+    m!(b!(-60, 60), false),   // 54 - rook adj
 
-    m!(b!(-75, 75), false),  // 50 - knight mobility
-    m!(b!(-75, 75), false),  // 51 - bishop mobility
-    m!(b!(-50, 50), false),  // 52 - rook mobility
-    m!(b!(-50, 50), false),  // 53 - queen mobility
+    m!(b!(-75, 75), false),   // 55 - knight mobility
+    m!(b!(-75, 75), false),   // 56 - bishop mobility
+    m!(b!(-50, 50), false),   // 57 - rook mobility
+    m!(b!(-50, 50), false),   // 58 - queen mobility
 ];
 
 #[rustfmt::skip]
