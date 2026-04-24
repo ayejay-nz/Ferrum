@@ -1,4 +1,4 @@
-use std::ops::{Div, Mul};
+use std::ops::{Add, Div, Mul};
 
 use crate::{
     bitboard::{Bitboard, Bitboards, bitboards},
@@ -24,6 +24,17 @@ impl Score {
         let sign = if S::IS_WHITE { 1 } else { -1 };
         self.mg += sign * score.mg;
         self.eg += sign * score.eg;
+    }
+}
+
+impl Add for Score {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            mg: self.mg + rhs.mg,
+            eg: self.eg + rhs.eg,
+        }
     }
 }
 
@@ -129,23 +140,21 @@ fn evaluate_pawns<S: Side>(
     info: &mut EvalInfo,
     params: &Params,
 ) {
+    let bbs = bitboards();
+
     let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
     let opp_pawns = pos.pieces[S::THEM][Piece::Pawn.idx()];
 
+    let (up, down) = if S::IS_WHITE {
+        (Direction::North, Direction::South)
+    } else {
+        (Direction::South, Direction::North)
+    };
+
+    let opp_double_attacks = opp_pawns.pawn_double_attacks_bb::<S::Opp>();
+
     // Material eval
     score.add::<S>(params.pawn_value * pawns.bit_count() as i32);
-
-    let mut file_counts = [0u8; 8];
-
-    // PST eval
-    let mut pawn_bb = pawns;
-    while !pawn_bb.is_empty() {
-        let pawn = pawn_bb.pop_lsb();
-        let sq = relative_square::<S>(pawn);
-        score.add::<S>(params.pawn_pst[sq]);
-
-        file_counts[pawn.file() as usize] += 1;
-    }
 
     // Store pawn attacks
     let pawn_attacks = if S::IS_WHITE {
@@ -156,45 +165,91 @@ fn evaluate_pawns<S: Side>(
     info.pawn_attacks[S::IDX] = pawn_attacks;
     info.all_attacks[S::IDX] |= pawn_attacks;
 
-    // Find passed pawns
-    let stoppers =
-        (opp_pawns | opp_pawns.shift(Direction::East) | opp_pawns.shift(Direction::West))
-            .backfill(S::COLOUR);
+    // Iterate over every pawn
+    let mut pawn_bb = pawns;
+    while !pawn_bb.is_empty() {
+        let sq = pawn_bb.pop_lsb();
+        let rel_sq = relative_square::<S>(sq);
 
-    let mut passers = pawns & !stoppers;
+        // PST eval
+        score.add::<S>(params.pawn_pst[rel_sq]);
 
-    while !passers.is_empty() {
-        let sq = passers.pop_lsb();
-        let rank = if S::IS_WHITE {
-            sq.rank() as usize - 1
-        } else {
-            7 - sq.rank() as usize - 1
-        };
+        let sq_bb = sq.bitboard();
+        let rel_rank = relative_rank::<S>(sq);
+        let rank_bb = sq.rank_bb();
+        let file_bb = sq.file_bb();
 
-        score.add::<S>(params.passed_pawn[rank]);
-    }
+        let front = sq_bb.frontfill(S::COLOUR) ^ sq_bb;
+        let passed_pawn_span = front | front.shift(Direction::East) | front.shift(Direction::West);
+        let adj_files = file_bb.shift(Direction::East) | file_bb.shift(Direction::West);
 
-    // Scan each file for isolated/multiple pawns
-    for file in 0..8 {
-        let pawn_count = file_counts[file].min(4);
+        // Flags for the pawn
+        let frontmost = (pawns & front).is_empty();
+        let opposed = !(opp_pawns & front).is_empty();
+        let blocked = opp_pawns & sq_bb.shift(up);
+        let stoppers = opp_pawns & passed_pawn_span;
+        let lever = opp_pawns & bbs.pawn_attacks(sq, S::COLOUR);
+        let lever_push = opp_pawns & bbs.pawn_attacks(sq_bb.shift(up).lsb(), S::COLOUR);
+        let neighbours = pawns & adj_files;
+        let phalanx = neighbours & rank_bb;
+        let support = neighbours & rank_bb.shift(down);
 
-        // Check for double/tripled/etc
-        if pawn_count > 1 {
-            match pawn_count {
+        // A pawn is backward when it is behind all pawns of the same colour
+        // on the adjacent files and cannot safely advance
+        let rear = sq_bb.backfill(S::COLOUR);
+        let backward_span = rear | rear.shift(Direction::East) | rear.shift(Direction::West);
+        let backward = !neighbours.is_empty()
+            && (neighbours & backward_span).is_empty()
+            && !(lever_push | blocked).is_empty();
+
+        let passed = stoppers.is_empty();
+
+        // A pawn is a candidated passer if it is not a passer and if one of the three following conditions is true:
+        // 1. There are no stoppers except some levers
+        // 2. The only stoppers are the lever_push, but we outnumber them
+        // 3. There is only one front stopper which can be levered
+        let candidate = (stoppers ^ lever).is_empty()
+            || ((stoppers ^ lever_push).is_empty()
+                && phalanx.bit_count() >= lever_push.bit_count())
+            || (stoppers == blocked
+                && rel_rank >= 4
+                && !(support.shift(up) & !(opp_pawns | opp_double_attacks)).is_empty());
+
+        if passed {
+            score.add::<S>(params.passed_pawn[rel_rank as usize - 1]);
+        } else if candidate {
+            score.add::<S>(params.candidate_passer[rel_rank as usize - 1]);
+        }
+
+        // Score support/phalanx pawns
+        if !support.is_empty() || !phalanx.is_empty() {
+            let bonus = params.connected_bonus[rel_rank as usize - 1]
+                * (2 + !phalanx.is_empty() as i32 - opposed as i32)
+                + params.supported_bonus[support.bit_count() as usize];
+            score.add::<S>(bonus);
+        }
+        // Isolated pawn
+        else if neighbours.is_empty() && frontmost {
+            let bucket = sq.file().min(7 - sq.file()) as usize;
+            let penalty = params.isolated_pawn[bucket] + params.weak_unopposed * !opposed as i32;
+            score.add::<S>(penalty);
+        }
+        // Backward pawn
+        else if backward {
+            let bucket = sq.file().min(7 - sq.file()) as usize;
+            let penalty = params.backward_pawn[bucket] + params.weak_unopposed * !opposed as i32;
+            score.add::<S>(penalty);
+        }
+
+        // Doubled/tripled/etc pawns
+        if frontmost {
+            match (pawns & file_bb).bit_count().min(4) {
+                1 => {}
                 2 => score.add::<S>(params.doubled_pawns),
                 3 => score.add::<S>(params.tripled_pawns),
                 4 => score.add::<S>(params.quadrupled_pawns),
                 _ => unreachable!(),
             }
-        }
-
-        // Check if a pawn is isolated
-        let left = file.checked_sub(1).map(|f| file_counts[f]).unwrap_or(0);
-        let right = file_counts.get(file + 1).copied().unwrap_or(0);
-
-        if pawn_count > 0 && left == 0 && right == 0 {
-            let bucket = file.min(7 - file);
-            score.add::<S>(params.isolated_pawn[bucket]);
         }
     }
 }

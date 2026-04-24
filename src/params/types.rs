@@ -43,6 +43,11 @@ pub struct Params {
     pub tripled_pawns: Score,
     pub quadrupled_pawns: Score,
     pub isolated_pawn: [Score; 4],
+    pub backward_pawn: [Score; 4],
+    pub weak_unopposed: Score,
+    pub candidate_passer: [Score; 6],
+    pub connected_bonus: [Score; 6],
+    pub supported_bonus: [Score; 3],
     pub passed_pawn: [Score; 6],
 
     pub king_on_open_file: Score,
@@ -122,6 +127,11 @@ pub const DEFAULT_PARAMS: Params = Params {
     tripled_pawns: TRIPLED_PAWNS,
     quadrupled_pawns: QUADRUPLED_PAWNS,
     isolated_pawn: ISOLATED_PAWN,
+    backward_pawn: BACKWARD_PAWN,
+    weak_unopposed: WEAK_UNOPPOSED,
+    candidate_passer: CANDIDATE_PASSER,
+    connected_bonus: CONNECTED_BONUS,
+    supported_bonus: SUPPORTED_BONUS,
     passed_pawn: PASSED_PAWN,
 
     king_on_open_file: KING_ON_OPEN_FILE,

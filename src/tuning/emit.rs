@@ -105,6 +105,36 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
     .unwrap();
     writeln!(
         &mut out,
+        "pub const BACKWARD_PAWN: [Score; 4] = {};",
+        fmt_score_array(&params.backward_pawn)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const WEAK_UNOPPOSED: Score = {};",
+        fmt_score(params.weak_unopposed)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const CANDIDATE_PASSER: [Score; 6] = {};",
+        fmt_score_array(&params.candidate_passer)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const CONNECTED_BONUS: [Score; 6] = {};",
+        fmt_score_array(&params.connected_bonus)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const SUPPORTED_BONUS: [Score; 3] = {};",
+        fmt_score_array(&params.supported_bonus)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
         "pub const PASSED_PAWN: [Score; 6] = {};",
         fmt_score_array(&params.passed_pawn)
     )
@@ -135,6 +165,12 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
         &mut out,
         "pub const BISHOP_SAME_COLOUR_PAWNS: [Score; 9] = {};",
         fmt_score_array(&params.bishop_same_colour_pawns)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const FIANCHETTO: Score = {};",
+        fmt_score(params.fianchetto)
     )
     .unwrap();
     writeln!(&mut out).unwrap();

@@ -191,6 +191,8 @@ impl Colour {
 }
 
 pub trait Side {
+    type Opp: Side;
+
     const COLOUR: Colour;
     const IDX: usize;
     const THEM: usize;
@@ -201,6 +203,8 @@ pub struct White;
 pub struct Black;
 
 impl Side for White {
+    type Opp = Black;
+
     const COLOUR: Colour = Colour::White;
     const IDX: usize = 0;
     const THEM: usize = 1;
@@ -208,6 +212,8 @@ impl Side for White {
 }
 
 impl Side for Black {
+    type Opp = White;
+
     const COLOUR: Colour = Colour::Black;
     const IDX: usize = 1;
     const THEM: usize = 0;

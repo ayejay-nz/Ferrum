@@ -22,6 +22,25 @@ pub const TRIPLED_PAWNS: Score = s!(-99, -54);
 pub const QUADRUPLED_PAWNS: Score = s!(-171, -381);
 
 pub const ISOLATED_PAWN: [Score; 4] = [s!(-15, 9), s!(-17, -11), s!(-28, -7), s!(-40, -19)];
+pub const BACKWARD_PAWN: [Score; 4] = [s!(-22, 9), s!(-1, 4), s!(-3, 5), s!(0, -31)];
+pub const WEAK_UNOPPOSED: Score = s!(-10, -14);
+pub const CANDIDATE_PASSER: [Score; 6] = [
+    s!(0, 0),
+    s!(1, 0),
+    s!(5, 7),
+    s!(23, 9),
+    s!(59, 27),
+    s!(61, 37),
+];
+pub const CONNECTED_BONUS: [Score; 6] = [
+    s!(3, 0),
+    s!(3, 4),
+    s!(5, 4),
+    s!(8, 6),
+    s!(18, 9),
+    s!(19, 13),
+];
+pub const SUPPORTED_BONUS: [Score; 3] = [s!(0, 0), s!(4, 8), s!(14, 14)];
 pub const PASSED_PAWN: [Score; 6] = [
     s!(6, -4),
     s!(8, 10),

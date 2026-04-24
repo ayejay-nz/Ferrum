@@ -4,7 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-use crate::types::{self, Colour, Direction, Piece, Square};
+use crate::types::{self, Colour, Direction, Piece, Side, Square};
 
 #[repr(transparent)]
 #[derive(Default, Copy, Clone, Eq, PartialEq, Debug)]
@@ -145,6 +145,23 @@ impl Bitboard {
     }
 
     #[inline(always)]
+    pub fn rank(n: u8) -> Bitboard {
+        debug_assert!(n < 8);
+
+        match n {
+            0 => Self::RANK_1,
+            1 => Self::RANK_2,
+            2 => Self::RANK_3,
+            3 => Self::RANK_4,
+            4 => Self::RANK_5,
+            5 => Self::RANK_6,
+            6 => Self::RANK_7,
+            7 => Self::RANK_8,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline(always)]
     pub fn shift(self, d: Direction) -> Self {
         match d {
             Direction::North => self << 8,
@@ -156,6 +173,16 @@ impl Bitboard {
             Direction::NorthWest => (self & !Self::FILE_A) << 7,
             Direction::SouthEast => (self & !Self::FILE_H) >> 7,
             Direction::SouthWest => (self & !Self::FILE_A) >> 9,
+        }
+    }
+
+    /// Returns the squares attacked twice by pawns of the provided colour
+    #[inline(always)]
+    pub fn pawn_double_attacks_bb<S: Side>(self) -> Bitboard {
+        if S::IS_WHITE {
+            self.shift(Direction::NorthEast) & self.shift(Direction::NorthWest)
+        } else {
+            self.shift(Direction::SouthEast) & self.shift(Direction::SouthWest)
         }
     }
 
