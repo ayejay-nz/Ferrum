@@ -12,6 +12,7 @@ pub const INFINITY: Eval = 32001;
 pub const NO_EVAL: i16 = i16::MIN;
 
 const PHASE_WEIGHTS: [u32; 6] = [0, 1, 1, 2, 4, 0];
+const SCALE_NORMAL: i32 = 128;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Score {
@@ -71,6 +72,11 @@ struct EvalInfo {
     king_ring_bishop_hits: [u32; 2],
     king_ring_rook_hits: [u32; 2],
     king_ring_queen_hits: [u32; 2],
+    pawns_remaining: [u16; 3],
+    knights_remaining: [u16; 3],
+    bishops_remaining: [u16; 3],
+    rooks_remaining: [u16; 3],
+    queens_remaining: [u16; 3],
 }
 
 impl EvalInfo {
@@ -90,7 +96,52 @@ impl EvalInfo {
             king_ring_bishop_hits: [0, 0],
             king_ring_rook_hits: [0, 0],
             king_ring_queen_hits: [0, 0],
+            pawns_remaining: [0, 0, 0],
+            knights_remaining: [0, 0, 0],
+            bishops_remaining: [0, 0, 0],
+            rooks_remaining: [0, 0, 0],
+            queens_remaining: [0, 0, 0],
         }
+    }
+
+    #[inline(always)]
+    fn pawns(&self, c: Colour) -> u16 {
+        self.pawns_remaining[c as usize]
+    }
+
+    #[inline(always)]
+    fn knights(&self, c: Colour) -> u16 {
+        self.knights_remaining[c as usize]
+    }
+
+    #[inline(always)]
+    fn bishops(&self, c: Colour) -> u16 {
+        self.bishops_remaining[c as usize]
+    }
+
+    #[inline(always)]
+    fn minors(&self, c: Colour) -> u16 {
+        self.knights(c) + self.bishops(c)
+    }
+
+    #[inline(always)]
+    fn rooks(&self, c: Colour) -> u16 {
+        self.rooks_remaining[c as usize]
+    }
+
+    #[inline(always)]
+    fn queens(&self, c: Colour) -> u16 {
+        self.queens_remaining[c as usize]
+    }
+
+    #[inline(always)]
+    fn majors(&self, c: Colour) -> u16 {
+        self.rooks(c) + self.queens(c)
+    }
+
+    #[inline(always)]
+    fn non_king(&self, c: Colour) -> u16 {
+        self.pawns(c) + self.minors(c) + self.majors(c)
     }
 }
 
@@ -156,7 +207,10 @@ fn evaluate_pawns<S: Side>(
     let opp_double_attacks = opp_pawns.pawn_double_attacks_bb::<S::Opp>();
 
     // Material eval
-    score.add::<S>(params.pawn_value * pawns.bit_count() as i32);
+    let pawn_count = pawns.bit_count() as u16;
+    info.pawns_remaining[S::IDX] = pawn_count;
+    info.pawns_remaining[2] += pawn_count;
+    score.add::<S>(params.pawn_value * pawn_count as i32);
 
     // Store pawn attacks
     let pawn_attacks = if S::IS_WHITE {
@@ -271,7 +325,10 @@ fn evaluate_knights<S: Side>(
     let mut knights = pos.pieces[S::IDX][Piece::Knight.idx()];
 
     // Material eval
-    score.add::<S>(params.knight_value * knights.bit_count() as i32);
+    let knight_count = knights.bit_count() as u16;
+    info.knights_remaining[S::IDX] = knight_count;
+    info.knights_remaining[2] += knight_count;
+    score.add::<S>(params.knight_value * knight_count as i32);
 
     while !knights.is_empty() {
         let knight = knights.pop_lsb();
@@ -330,7 +387,9 @@ fn evaluate_bishops<S: Side>(
     let mut bishops = pos.pieces[S::IDX][Piece::Bishop.idx()];
 
     // Material eval
-    let bishop_count = bishops.bit_count();
+    let bishop_count = bishops.bit_count() as u16;
+    info.bishops_remaining[S::IDX] = bishop_count;
+    info.bishops_remaining[2] += bishop_count;
     score.add::<S>(params.bishop_value * bishop_count as i32);
 
     let pawns = pos.pieces[S::IDX][Piece::Pawn.idx()];
@@ -425,7 +484,10 @@ fn evaluate_rooks<S: Side>(
     let mut rooks = pos.pieces[S::IDX][Piece::Rook.idx()];
 
     // Material eval
-    score.add::<S>(params.rook_value * rooks.bit_count() as i32);
+    let rook_count = rooks.bit_count() as u16;
+    info.rooks_remaining[S::IDX] = rook_count;
+    info.rooks_remaining[2] += rook_count;
+    score.add::<S>(params.rook_value * rook_count as i32);
 
     while !rooks.is_empty() {
         let rook = rooks.pop_lsb();
@@ -507,7 +569,10 @@ fn evaluate_queens<S: Side>(
     let mut queens = pos.pieces[S::IDX][Piece::Queen.idx()];
 
     // Material eval
-    score.add::<S>(params.queen_value * queens.bit_count() as i32);
+    let queen_count = queens.bit_count() as u16;
+    info.queens_remaining[S::IDX] = queen_count;
+    info.queens_remaining[2] += queen_count;
+    score.add::<S>(params.queen_value * queen_count as i32);
 
     while !queens.is_empty() {
         let queen = queens.pop_lsb();
@@ -692,6 +757,155 @@ fn evaluate_threats<S: Side>(pos: &Position, score: &mut Score, info: &EvalInfo,
     }
 }
 
+fn draw_scale(pos: &Position, strong: Colour, info: &EvalInfo) -> i32 {
+    let weak = strong.opposite();
+
+    // Scale down to near 0 when position is KNN vs K
+    if info.non_king(weak) == 0 && info.non_king(strong) == 2 && info.knights(strong) == 2 {
+        return 1;
+    }
+
+    // Scale down when the stronger side has no pawns
+    if info.pawns(strong) == 0 {
+        // No pawns makes it harder to convert, however a
+        // queen is usually strong enough without
+        if info.queens(strong) > 0 {
+            return 96;
+        }
+
+        // Rook advantages with no pawns can be hard to convert
+        // unless the opponent has weak material
+        if info.rooks(strong) > 0 {
+            return if info.queens(weak) == 0 { 64 } else { 32 };
+        }
+
+        // KM vs K is a drawn
+        if info.minors(Colour::Both) == 1 {
+            return 0;
+        }
+        // KNN vs K is almost always drawn, so scale to near 0
+        if info.knights(strong) == 2 && info.minors(Colour::Both) == 2 {
+            return 1;
+        }
+        // KMM vs K is usually winnable
+        if info.minors(strong) == 2 {
+            return SCALE_NORMAL;
+        }
+    }
+
+    // Scale down opposite coloured bishops + pawn endgames
+    if info.majors(Colour::Both) == 0
+        && info.knights(Colour::Both) == 0
+        && info.bishops(strong) == 1
+        && info.bishops(weak) == 1
+    {
+        let strong_bishop = pos.pieces[strong.idx()][Piece::Bishop.idx()].lsb();
+        let weak_bishop = pos.pieces[weak.idx()][Piece::Bishop.idx()].lsb();
+
+        if strong_bishop.colour() == weak_bishop.colour() {
+            return SCALE_NORMAL;
+        }
+
+        // Opposite coloured bishop vs opposite coloured bishop is nearly always drawn
+        if info.pawns(Colour::Both) == 0 {
+            return 1;
+        }
+
+        let pawn_adv = info.pawns(strong) as i32 - info.pawns(weak) as i32;
+        return match pawn_adv {
+            i32::MIN..=0 => 48,
+            1 => 32,
+            2 => 56,
+            3 => 80,
+            _ => 104,
+        };
+    }
+
+    // Scale down minor-only endings with < 3 pawns
+    if info.majors(Colour::Both) == 0 {
+        if info.minors(Colour::Both) == 0 || info.pawns(Colour::Both) >= 3 {
+            return SCALE_NORMAL;
+        }
+
+        let minor_adv = info.minors(strong) as i32 - info.minors(weak) as i32;
+        let pawn_adv = info.pawns(strong) as i32 - info.pawns(weak) as i32;
+        return match minor_adv {
+            // Eval likes strong side despite not being up a minor
+            // With < 3 pawns, this is often hard to convert
+            i32::MIN..=-1 => 64,
+
+            // Same minor count: mostly pawn conversion chances
+            0 => match pawn_adv {
+                i32::MIN..=0 => 64,
+                1 => 72,
+                _ => 96,
+            },
+
+            // Up one minor in low-pawn endgame
+            1 => match info.pawns(Colour::Both) {
+                0 => 64,
+                1 => 80,
+                _ => 96,
+            },
+
+            // Up two or more minors: likely win
+            _ => 112,
+        };
+    }
+
+    // Scale down rook vs rook endgames
+    if info.queens(Colour::Both) == 0
+        && info.minors(Colour::Both) == 0
+        && info.rooks(strong) == 1
+        && info.rooks(weak) == 1
+    {
+        let total_pawns = info.pawns(Colour::Both);
+
+        if total_pawns == 0 {
+            return SCALE_NORMAL;
+        }
+
+        let pawn_adv = info.pawns(strong) as i32 - info.pawns(weak) as i32;
+        return match pawn_adv {
+            i32::MIN..=0 => 96,
+            1 => {
+                if total_pawns <= 2 {
+                    72
+                } else if total_pawns <= 4 {
+                    80
+                } else {
+                    88
+                }
+            }
+            2 => {
+                if total_pawns <= 4 {
+                    96
+                } else {
+                    104
+                }
+            }
+            _ => 112,
+        };
+    }
+
+    SCALE_NORMAL
+}
+
+fn scale_drawish(pos: &Position, eval: Eval, info: &EvalInfo) -> Eval {
+    if eval == 0 {
+        return 0;
+    }
+
+    let strong = if eval > 0 {
+        pos.side_to_move
+    } else {
+        pos.side_to_move.opposite()
+    };
+
+    let scale = draw_scale(pos, strong, info);
+    eval * scale / SCALE_NORMAL
+}
+
 fn taper(score: Score, phase: i32, us: Colour) -> Eval {
     let mg_phase = phase.min(24);
     let eg_phase = 24 - mg_phase;
@@ -733,7 +947,8 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     evaluate_king_safety::<White>(pos, &mut score, &mut info, params);
     evaluate_king_safety::<Black>(pos, &mut score, &mut info, params);
 
-    taper(score, phase, pos.side_to_move)
+    let eval = taper(score, phase, pos.side_to_move);
+    scale_drawish(pos, eval, &info)
 }
 
 fn lazy_piece_terms<S: Side>(mut bb: Bitboard, value: Option<Score>, pst: &PST, score: &mut Score) {
