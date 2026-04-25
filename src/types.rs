@@ -173,6 +173,7 @@ pub const RANK_8: u64 = RANK_1 << 56;
 pub enum Colour {
     White = 0,
     Black = 1,
+    Both = 2,
 }
 
 impl Colour {
@@ -186,6 +187,7 @@ impl Colour {
         match self {
             Self::White => Self::Black,
             Self::Black => Self::White,
+            Self::Both => Self::Both,
         }
     }
 }
@@ -442,6 +444,7 @@ impl Castling {
             (Colour::White, CastlingType::Queenside) => (Square::A1, Square::D1),
             (Colour::Black, CastlingType::Kingside) => (Square::H8, Square::F8),
             (Colour::Black, CastlingType::Queenside) => (Square::A8, Square::D8),
+            _ => unreachable!(),
         }
     }
 

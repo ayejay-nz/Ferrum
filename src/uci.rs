@@ -157,6 +157,7 @@ fn parse_go_clock_time(command: &str, pos: &Position) -> Option<Duration> {
     let (time_key, inc_key) = match pos.side_to_move {
         Colour::White => ("wtime", "winc"),
         Colour::Black => ("btime", "binc"),
+        _ => unreachable!(),
     };
 
     let time_ms = parse_go_u64(command, time_key)?;

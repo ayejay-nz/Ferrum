@@ -366,6 +366,7 @@ impl Bitboards {
         match colour {
             Colour::White => bb.shift(Direction::NorthEast) | bb.shift(Direction::NorthWest),
             Colour::Black => bb.shift(Direction::SouthEast) | bb.shift(Direction::SouthWest),
+            _ => unreachable!(),
         }
     }
 

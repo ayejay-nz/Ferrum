@@ -147,6 +147,7 @@ impl Position {
             match colour {
                 Colour::White => self.white_king_square = square,
                 Colour::Black => self.black_king_square = square,
+                _ => unreachable!(),
             }
         }
     }
@@ -571,6 +572,7 @@ impl Position {
                         (Colour::White, CastlingType::Queenside) => Castling::WHITE_OOO,
                         (Colour::Black, CastlingType::Kingside) => Castling::BLACK_OO,
                         (Colour::Black, CastlingType::Queenside) => Castling::BLACK_OOO,
+                        _ => unreachable!(),
                     };
 
                     return self.can_castle(castling_flag) && !self.castling_impeded(castling_flag);

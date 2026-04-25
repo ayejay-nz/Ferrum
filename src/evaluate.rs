@@ -104,6 +104,7 @@ const fn relative_square<S: Side>(sq: Square) -> usize {
     match S::COLOUR {
         Colour::Black => sq.idx(),
         Colour::White => sq.idx() ^ 56,
+        _ => unreachable!(),
     }
 }
 
@@ -112,6 +113,7 @@ const fn relative_rank<S: Side>(sq: Square) -> u8 {
     match S::COLOUR {
         Colour::White => sq.rank(),
         Colour::Black => 7 - sq.rank(),
+        _ => unreachable!(),
     }
 }
 

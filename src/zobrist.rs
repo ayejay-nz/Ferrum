@@ -832,6 +832,7 @@ pub fn ep_hashable(mailbox: &Mailbox, ep_square: Square, stm: Colour) -> bool {
             (ep_file < 7 && (mailbox.piece_code_at(Square::new(sq + 9)) == pawn))
                 || (ep_file > 0 && (mailbox.piece_code_at(Square::new(sq + 7)) == pawn))
         }
+        _ => unreachable!(),
     }
 }
 
