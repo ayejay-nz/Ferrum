@@ -558,6 +558,8 @@ fn evaluate_king_safety<S: Side>(
     info: &mut EvalInfo,
     params: &Params,
 ) {
+    let bbs = bitboards();
+
     let king = if S::IS_WHITE {
         pos.white_king_square
     } else {
@@ -647,6 +649,12 @@ fn evaluate_king_safety<S: Side>(
 
         score.add::<S>(params.enemy_pawn_distance_from_backrank[d]);
     }
+
+    // King virtual mobility
+    let occ = pos.occupancy[2] ^ king.bitboard();
+    let virtual_control = bbs.bishop_attacks(king, occ) | bbs.rook_attacks(king, occ);
+    let virtual_mobility = (virtual_control & !pos.occupancy[S::IDX]).bit_count() as usize;
+    score.add::<S>(params.king_virtual_mobility[virtual_mobility]);
 }
 
 fn evaluate_threats<S: Side>(pos: &Position, score: &mut Score, info: &EvalInfo, params: &Params) {

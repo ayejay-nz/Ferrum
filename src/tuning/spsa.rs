@@ -96,7 +96,7 @@ pub fn tune_full(path: &Path, stop: &AtomicBool) -> Result<()> {
 
     // Fitted k value
     // let k = fit_k(&samples, &DEFAULT_PARAMS, &evaluate_with);
-    let k = 1.392;
+    let k = 1.425;
     println!("fitted k value: {k}");
 
     let loss_fn = |p: &Params| loss(&samples, p, &evaluate_with, k);

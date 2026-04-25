@@ -343,6 +343,12 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
         fmt_score_array(&params.king_ring_attacks)
     )
     .unwrap();
+    writeln!(
+        &mut out,
+        "pub const KING_VIRTUAL_MOBILITY: [Score; 28] = {};",
+        fmt_score_array(&params.king_virtual_mobility)
+    )
+    .unwrap();
     writeln!(&mut out).unwrap();
 
     writeln!(

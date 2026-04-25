@@ -192,6 +192,7 @@ impl TuningConfig for FullTuningConfig {
         push_score(&mut out, params.king_ring_rook_weight);
         push_score(&mut out, params.king_ring_queen_weight);
         push_score_array(&mut out, &params.king_ring_attacks);
+        push_score_array(&mut out, &params.king_virtual_mobility);
 
         push_score_array(&mut out, &params.knight_adj);
         push_score_array(&mut out, &params.rook_adj);
@@ -270,6 +271,7 @@ impl TuningConfig for FullTuningConfig {
             king_ring_rook_weight: next_score(&mut it),
             king_ring_queen_weight: next_score(&mut it),
             king_ring_attacks: next_score_array(&mut it),
+            king_virtual_mobility: next_score_array(&mut it),
 
             knight_adj: next_score_array(&mut it),
             rook_adj: next_score_array(&mut it),
@@ -340,6 +342,7 @@ impl TuningConfig for FullTuningConfig {
             king_ring_rook_weight,
             king_ring_queen_weight,
             king_ring_attacks,
+            king_virtual_mobility,
             knight_adj,
             rook_adj,
             knight_mobility,
@@ -410,6 +413,7 @@ impl TuningConfig for FullTuningConfig {
         push_score_bounds(&mut out, king_ring_rook_weight);
         push_score_bounds(&mut out, king_ring_queen_weight);
         push_score_array_bounds::<24>(&mut out, king_ring_attacks);
+        push_score_array_bounds::<28>(&mut out, king_virtual_mobility);
 
         push_score_array_bounds::<9>(&mut out, knight_adj);
         push_score_array_bounds::<9>(&mut out, rook_adj);
@@ -455,14 +459,14 @@ impl TuningConfig for FullTuningConfig {
             make_nonincreasing(&mut params.king_ring_attacks);
         }
 
-        if self.meta[53].active {
+        if self.meta[54].active {
             make_nondecreasing(&mut params.knight_adj);
 
             if self.meta[7].active {
                 normalise_mean_zero(&mut params.knight_value, &mut params.knight_adj);
             }
         }
-        if self.meta[54].active {
+        if self.meta[55].active {
             make_nonincreasing(&mut params.rook_adj);
 
             if self.meta[9].active {
@@ -510,16 +514,16 @@ impl TuningConfig for FullTuningConfig {
             params.hanging_queen.eg = params.hanging_queen.eg.max(params.hanging_rook.eg + 1);
         }
 
-        if self.meta[7].active && self.meta[55].active {
+        if self.meta[7].active && self.meta[56].active {
             normalise_mean_zero(&mut params.knight_value, &mut params.knight_mobility);
         }
-        if self.meta[8].active && self.meta[56].active {
+        if self.meta[8].active && self.meta[57].active {
             normalise_mean_zero(&mut params.bishop_value, &mut params.bishop_mobility);
         }
-        if self.meta[9].active && self.meta[57].active {
+        if self.meta[9].active && self.meta[58].active {
             normalise_mean_zero(&mut params.rook_value, &mut params.rook_mobility);
         }
-        if self.meta[10].active && self.meta[58].active {
+        if self.meta[10].active && self.meta[59].active {
             normalise_mean_zero(&mut params.queen_value, &mut params.queen_mobility);
         }
 
@@ -721,20 +725,21 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(-40, 40), false),   // 45 - king pawn shield distance
     m!(b!(-50, 0), false),    // 46 - enemy pawn distance from backrank
 
-    m!(b!(1, 2), false),      // 47 - king ring pawn weights
-    m!(b!(2, 3), false),      // 48 - king ring knight weights
-    m!(b!(2, 3), false),      // 49 - king ring bishop weights
-    m!(b!(3, 4), false),      // 50 - king ring rook weights
-    m!(b!(4, 5), false),      // 51 - king ring queen weights
-    m!(b!(-200, 20), false),  // 52 - king ring attacks
+    m!(b!(1, 2), false),       // 47 - king ring pawn weights
+    m!(b!(2, 3), false),       // 48 - king ring knight weights
+    m!(b!(2, 3), false),       // 49 - king ring bishop weights
+    m!(b!(3, 4), false),       // 50 - king ring rook weights
+    m!(b!(4, 5), false),       // 51 - king ring queen weights
+    m!(b!(-200, 20), false),   // 52 - king ring attacks
+    m!(b!(-120, 20), false),   // 53 - king virtual mobility
 
-    m!(b!(-60, 60), false),   // 53 - knight adj
-    m!(b!(-60, 60), false),   // 54 - rook adj
+    m!(b!(-60, 60), false),    // 54 - knight adj
+    m!(b!(-60, 60), false),    // 55 - rook adj
 
-    m!(b!(-75, 75), false),   // 55 - knight mobility
-    m!(b!(-75, 75), false),   // 56 - bishop mobility
-    m!(b!(-50, 50), false),   // 57 - rook mobility
-    m!(b!(-50, 50), false),   // 58 - queen mobility
+    m!(b!(-75, 75), false),    // 56 - knight mobility
+    m!(b!(-75, 75), false),    // 57 - bishop mobility
+    m!(b!(-50, 50), false),    // 58 - rook mobility
+    m!(b!(-50, 50), false),    // 59 - queen mobility
 ];
 
 #[rustfmt::skip]

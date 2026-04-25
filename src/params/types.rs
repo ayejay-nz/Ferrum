@@ -67,6 +67,7 @@ pub struct Params {
     pub king_ring_rook_weight: Score,
     pub king_ring_queen_weight: Score,
     pub king_ring_attacks: [Score; 24],
+    pub king_virtual_mobility: [Score; 28],
 
     pub knight_adj: [Score; 9],
     pub rook_adj: [Score; 9],
@@ -156,6 +157,7 @@ pub const DEFAULT_PARAMS: Params = Params {
     king_ring_rook_weight: KING_RING_ROOK_WEIGHT,
     king_ring_queen_weight: KING_RING_QUEEN_WEIGHT,
     king_ring_attacks: KING_RING_ATTACKS,
+    king_virtual_mobility: KING_VIRTUAL_MOBILITY,
 
     knight_adj: KNIGHT_ADJ,
     rook_adj: ROOK_ADJ,
