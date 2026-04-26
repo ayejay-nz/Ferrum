@@ -157,6 +157,17 @@ pub const KING_VIRTUAL_MOBILITY: [Score; 28] = [
     s!(-82, -12),
 ];
 
+pub const DRAW_SCALES: DrawScales = DrawScales {
+    knn_vs_k: 5,
+    no_pawn_queen: 67,
+    no_pawn_rook: 50,
+    no_pawn_rook_vs_queen: 43,
+    no_pawn_minor: 0,
+    opposite_bishops: [43, 41, 67, 102, 109],
+    minor_low_pawn: [108, 37, 43, 107, 75, 93, 97, 111],
+    rook_vs_rook: [95, 85, 93, 128, 128, 128, 128],
+};
+
 // Adjustment values based on the number of pawns left
 pub const KNIGHT_ADJ: [Score; 9] = [
     s!(-40, -40),

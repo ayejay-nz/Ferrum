@@ -13,6 +13,14 @@ pub fn push_score_array<const N: usize>(out: &mut Vec<i32>, arr: &[Score; N]) {
     }
 }
 
+pub fn push_i32(out: &mut Vec<i32>, value: i32) {
+    out.push(value);
+}
+
+pub fn push_i32_array<const N: usize>(out: &mut Vec<i32>, arr: &[i32; N]) {
+    out.extend_from_slice(arr);
+}
+
 pub fn push_pawn_pst(out: &mut Vec<i32>, pst: &PST) {
     for (i, &s) in pst.iter().enumerate() {
         // Skip 1st and 8th rank
@@ -31,8 +39,16 @@ pub fn next_score<I: Iterator<Item = i32>>(it: &mut I) -> Score {
     }
 }
 
+pub fn next_i32<I: Iterator<Item = i32>>(it: &mut I) -> i32 {
+    it.next().unwrap()
+}
+
 pub fn next_score_array<const N: usize, I: Iterator<Item = i32>>(it: &mut I) -> [Score; N] {
     array::from_fn(|_| next_score(it))
+}
+
+pub fn next_i32_array<const N: usize, I: Iterator<Item = i32>>(it: &mut I) -> [i32; N] {
+    array::from_fn(|_| next_i32(it))
 }
 
 pub fn next_pawn_pst<I: Iterator<Item = i32>>(it: &mut I, base: &PST) -> PST {
@@ -127,6 +143,16 @@ pub fn push_score_bounds(out: &mut Vec<ParamMeta>, b: ParamMeta) {
 pub fn push_score_array_bounds<const N: usize>(out: &mut Vec<ParamMeta>, b: ParamMeta) {
     for _ in 0..N {
         push_score_bounds(out, b);
+    }
+}
+
+pub fn push_i32_bounds(out: &mut Vec<ParamMeta>, b: ParamMeta) {
+    out.push(b);
+}
+
+pub fn push_i32_array_bounds<const N: usize>(out: &mut Vec<ParamMeta>, b: ParamMeta) {
+    for _ in 0..N {
+        push_i32_bounds(out, b);
     }
 }
 

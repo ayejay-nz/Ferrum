@@ -1,5 +1,6 @@
 pub mod bitboard;
 pub mod book;
+pub mod endgame;
 pub mod evaluate;
 pub mod movegen;
 pub mod movepick;

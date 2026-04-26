@@ -2,8 +2,8 @@ use std::fmt;
 
 use crate::{
     params::{
-        DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LAZY_PARAM_COUNT, LAZY_PAWN_PST, LazyParams,
-        PARAM_COUNT, PAWN_PST, Params,
+        DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, DrawScales, LAZY_PARAM_COUNT, LAZY_PAWN_PST,
+        LazyParams, PARAM_COUNT, PAWN_PST, Params,
     },
     position::Position,
     tuning::helpers::*,
@@ -202,6 +202,15 @@ impl TuningConfig for FullTuningConfig {
         push_score_array(&mut out, &params.rook_mobility);
         push_score_array(&mut out, &params.queen_mobility);
 
+        push_i32(&mut out, params.draw_scales.knn_vs_k);
+        push_i32(&mut out, params.draw_scales.no_pawn_queen);
+        push_i32(&mut out, params.draw_scales.no_pawn_rook);
+        push_i32(&mut out, params.draw_scales.no_pawn_rook_vs_queen);
+        push_i32(&mut out, params.draw_scales.no_pawn_minor);
+        push_i32_array(&mut out, &params.draw_scales.opposite_bishops);
+        push_i32_array(&mut out, &params.draw_scales.minor_low_pawn);
+        push_i32_array(&mut out, &params.draw_scales.rook_vs_rook);
+
         out
     }
 
@@ -280,6 +289,17 @@ impl TuningConfig for FullTuningConfig {
             bishop_mobility: next_score_array(&mut it),
             rook_mobility: next_score_array(&mut it),
             queen_mobility: next_score_array(&mut it),
+
+            draw_scales: DrawScales {
+                knn_vs_k: next_i32(&mut it),
+                no_pawn_queen: next_i32(&mut it),
+                no_pawn_rook: next_i32(&mut it),
+                no_pawn_rook_vs_queen: next_i32(&mut it),
+                no_pawn_minor: next_i32(&mut it),
+                opposite_bishops: next_i32_array(&mut it),
+                minor_low_pawn: next_i32_array(&mut it),
+                rook_vs_rook: next_i32_array(&mut it),
+            },
         };
 
         debug_assert!(it.next().is_none());
@@ -349,6 +369,14 @@ impl TuningConfig for FullTuningConfig {
             bishop_mobility,
             rook_mobility,
             queen_mobility,
+            draw_scale_knn_vs_k,
+            draw_scale_no_pawn_queen,
+            draw_scale_no_pawn_rook,
+            draw_scale_no_pawn_rook_vs_queen,
+            draw_scale_no_pawn_minor,
+            draw_scale_opposite_bishops,
+            draw_scale_minor_low_pawn,
+            draw_scale_rook_vs_rook,
         ] = self.meta;
 
         push_pawn_pst_bounds(&mut out, pawn_pst);
@@ -423,6 +451,15 @@ impl TuningConfig for FullTuningConfig {
         push_score_array_bounds::<15>(&mut out, rook_mobility);
         push_score_array_bounds::<28>(&mut out, queen_mobility);
 
+        push_i32_bounds(&mut out, draw_scale_knn_vs_k);
+        push_i32_bounds(&mut out, draw_scale_no_pawn_queen);
+        push_i32_bounds(&mut out, draw_scale_no_pawn_rook);
+        push_i32_bounds(&mut out, draw_scale_no_pawn_rook_vs_queen);
+        push_i32_bounds(&mut out, draw_scale_no_pawn_minor);
+        push_i32_array_bounds::<5>(&mut out, draw_scale_opposite_bishops);
+        push_i32_array_bounds::<8>(&mut out, draw_scale_minor_low_pawn);
+        push_i32_array_bounds::<7>(&mut out, draw_scale_rook_vs_rook);
+
         out
     }
 
@@ -449,10 +486,12 @@ impl TuningConfig for FullTuningConfig {
         }
         if self.meta[38].active || self.meta[41].active {
             for i in 0..6 {
-                params.candidate_passer[i].mg =
-                    params.candidate_passer[i].mg.min(params.passed_pawn[i].mg);
-                params.candidate_passer[i].eg =
-                    params.candidate_passer[i].eg.min(params.passed_pawn[i].eg);
+                params.candidate_passer[i].mg = params.candidate_passer[i]
+                    .mg
+                    .min(params.passed_pawn[i].mg + 3);
+                params.candidate_passer[i].eg = params.candidate_passer[i]
+                    .eg
+                    .min(params.passed_pawn[i].eg + 3);
             }
         }
         if self.meta[52].active {
@@ -536,6 +575,33 @@ impl TuningConfig for FullTuningConfig {
 
         if self.meta[52].active {
             normalise_king_ring(&mut params.king_ring_attacks);
+        }
+
+        if self.meta[65].active {
+            for i in 2..params.draw_scales.opposite_bishops.len() {
+                params.draw_scales.opposite_bishops[i] = params.draw_scales.opposite_bishops[i]
+                    .max(params.draw_scales.opposite_bishops[i - 1] - 3);
+            }
+        }
+
+        if self.meta[66].active {
+            params.draw_scales.minor_low_pawn[2] =
+                params.draw_scales.minor_low_pawn[2].max(params.draw_scales.minor_low_pawn[1]);
+            params.draw_scales.minor_low_pawn[3] =
+                params.draw_scales.minor_low_pawn[3].max(params.draw_scales.minor_low_pawn[2]);
+            params.draw_scales.minor_low_pawn[5] =
+                params.draw_scales.minor_low_pawn[5].max(params.draw_scales.minor_low_pawn[4]);
+            params.draw_scales.minor_low_pawn[6] =
+                params.draw_scales.minor_low_pawn[6].max(params.draw_scales.minor_low_pawn[5]);
+            params.draw_scales.minor_low_pawn[7] =
+                params.draw_scales.minor_low_pawn[7].max(params.draw_scales.minor_low_pawn[6]);
+        }
+
+        if self.meta[67].active {
+            for i in 2..params.draw_scales.rook_vs_rook.len() {
+                params.draw_scales.rook_vs_rook[i] = params.draw_scales.rook_vs_rook[i]
+                    .max(params.draw_scales.rook_vs_rook[i - 1] - 3);
+            }
         }
 
         self.clamp(params);
@@ -672,14 +738,14 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(-50, 200), false),  // 0 - pawn pst
     m!(b!(-200, 200), false), // 1 - knight pst
     m!(b!(-100, 100), false), // 2 - bishop pst
-    m!(b!(-100, 100), true),  // 3 - rook pst
+    m!(b!(-100, 100), false), // 3 - rook pst
     m!(b!(-200, 200), false), // 4 - queen pst
     m!(b!(-200, 200), false), // 5 - king pst
 
     m!(b!(70, 100), false),   // 6 - pawn value
     m!(b!(240, 360), false),  // 7 - knight value
     m!(b!(250, 370), false),  // 8 - bishop value
-    m!(b!(400, 560), true),   // 9 - rook value
+    m!(b!(400, 560), false),  // 9 - rook value
     m!(b!(850, 1100), false), // 10 - queen value
 
     m!(b!(-5, 30), false),    // 11 - knight outpost
@@ -691,11 +757,11 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(-5, 30), false),    // 16 - bishop outpost
     m!(b!(-5, 60), false),    // 17 - defended bishop outpost
 
-    m!(b!(-5, 100), true),    // 18 - rook open file
-    m!(b!(-5, 100), true),    // 19 - rook semi-open file
-    m!(b!(-5, 100), true),    // 20 - rook on seventh
-    m!(b!(-5, 40), true),     // 21 - rook on queen file
-    m!(b!(-5, 60), true),     // 22 - connected doubled rooks
+    m!(b!(-5, 100), false),   // 18 - rook open file
+    m!(b!(-5, 100), false),   // 19 - rook semi-open file
+    m!(b!(-5, 100), false),   // 20 - rook on seventh
+    m!(b!(-5, 40), false),    // 21 - rook on queen file
+    m!(b!(-5, 60), false),    // 22 - connected doubled rooks
 
     m!(b!(-20, 0), false),    // 23 - queen undeveloped piece punishment
     m!(b!(-20, 0), false),    // 24 - queen unmoved king punishment
@@ -703,10 +769,10 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(0, 40), false),     // 25 - pawn threat minor
     m!(b!(0, 80), false),     // 26 - pawn threat major
     m!(b!(0, 60), false),     // 27 - hanging minor
-    m!(b!(0, 120), false),     // 28 - hanging rook
+    m!(b!(0, 120), false),    // 28 - hanging rook
     m!(b!(0, 180), false),    // 29 - hanging queen
     m!(b!(0, 50), false),     // 30 - minor threat queen
-    m!(b!(0, 70), false),      // 31 - rook threat queen
+    m!(b!(0, 70), false),     // 31 - rook threat queen
 
     m!(b!(-100, -1), false),  // 32 - doubled pawns
     m!(b!(-200, -1), false),  // 33 - tripled pawns
@@ -714,10 +780,10 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(-50, 10), false),   // 35 - isolated pawn
     m!(b!(-50, 10), false),   // 36 - backward pawn
     m!(b!(-25, 0), false),    // 37 - weak unopposed
-    m!(b!(0, 80), false),     // 38 - candidate passer
-    m!(b!(0, 20), false),     // 39 - connected bonus
-    m!(b!(0, 15), false),     // 40 - supported bonus
-    m!(b!(-5, 200), false),   // 41 - passed pawn
+    m!(b!(-5, 80), true),     // 38 - candidate passer
+    m!(b!(0, 20), true),     // 39 - connected bonus
+    m!(b!(0, 15), true),     // 40 - supported bonus
+    m!(b!(-5, 200), true),   // 41 - passed pawn
 
     m!(b!(-75, 5), false),    // 42 - king on open file
     m!(b!(-40, 40), false),   // 43 - king on semi open file
@@ -730,30 +796,39 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(2, 3), false),       // 49 - king ring bishop weights
     m!(b!(3, 4), false),       // 50 - king ring rook weights
     m!(b!(4, 5), false),       // 51 - king ring queen weights
-    m!(b!(-200, 20), false),   // 52 - king ring attacks
+    m!(b!(-200, 20), true),   // 52 - king ring attacks
     m!(b!(-120, 20), false),   // 53 - king virtual mobility
 
-    m!(b!(-60, 60), false),    // 54 - knight adj
-    m!(b!(-60, 60), false),    // 55 - rook adj
+    m!(b!(-60, 60), true),    // 54 - knight adj
+    m!(b!(-60, 60), true),    // 55 - rook adj
 
     m!(b!(-75, 75), false),    // 56 - knight mobility
     m!(b!(-75, 75), false),    // 57 - bishop mobility
     m!(b!(-50, 50), false),    // 58 - rook mobility
     m!(b!(-50, 50), false),    // 59 - queen mobility
+
+    m!(b!(0, 16), false),       // 60 - draw scale KNN vs K
+    m!(b!(60, 128), false),     // 61 - draw scale no-pawn queen advantage
+    m!(b!(48, 96), false),      // 62 - draw scale no-pawn rook advantage
+    m!(b!(16, 64), false),      // 63 - draw scale no-pawn rook vs queen
+    m!(b!(0, 16), false),       // 64 - draw scale no-pawn minor advantage
+    m!(b!(16, 112), false),     // 65 - draw scale opposite bishops
+    m!(b!(36, 116), false),     // 66 - draw scale minor low-pawn endings
+    m!(b!(64, 128), false),     // 67 - draw scale rook vs rook endings
 ];
 
 #[rustfmt::skip]
 pub const DEFAULT_LAZY_PARAM_META: [ParamMeta; LAZY_PARAM_COUNT] = [
-    m!(b!(-50, 200), true),  // 0 - pawn pst
-    m!(b!(-200, 200), true), // 1 - knight pst
-    m!(b!(-100, 100), true), // 2 - bishop pst
-    m!(b!(-100, 100), true), // 3 - rook pst
-    m!(b!(-200, 200), true), // 4 - queen pst
-    m!(b!(-200, 200), true), // 5 - king pst
+    m!(b!(-50, 200), false),  // 0 - pawn pst
+    m!(b!(-200, 200), false), // 1 - knight pst
+    m!(b!(-100, 100), false), // 2 - bishop pst
+    m!(b!(-100, 100), false), // 3 - rook pst
+    m!(b!(-200, 200), false), // 4 - queen pst
+    m!(b!(-200, 200), false), // 5 - king pst
 
-    m!(b!(70, 100), true),   // 6 - pawn value
-    m!(b!(240, 360), true),  // 7 - knight value
-    m!(b!(250, 370), true),  // 8 - bishop value
-    m!(b!(400, 560), true),  // 9 - rook value
-    m!(b!(850, 1100), true), // 10 - queen value
+    m!(b!(70, 100), false),   // 6 - pawn value
+    m!(b!(240, 360), false),  // 7 - knight value
+    m!(b!(250, 370), false),  // 8 - bishop value
+    m!(b!(400, 560), false),  // 9 - rook value
+    m!(b!(850, 1100), false), // 10 - queen value
 ];

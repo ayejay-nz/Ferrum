@@ -23,6 +23,15 @@ fn fmt_score_array<const N: usize>(arr: &[Score; N]) -> String {
     format!("[{items}]")
 }
 
+fn fmt_i32_array<const N: usize>(arr: &[i32; N]) -> String {
+    let items = arr
+        .iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{items}]")
+}
+
 fn fmt_pst(name: &str, pst: &PST) -> String {
     let mut out = String::new();
     out.push_str("#[rustfmt::skip]\n");
@@ -399,6 +408,57 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
         fmt_score_array(&params.queen_mobility)
     )
     .unwrap();
+    writeln!(&mut out).unwrap();
+
+    writeln!(
+        &mut out,
+        "pub const DRAW_SCALES: DrawScales = DrawScales {{"
+    )
+    .unwrap();
+    writeln!(&mut out, "    knn_vs_k: {},", params.draw_scales.knn_vs_k).unwrap();
+    writeln!(
+        &mut out,
+        "    no_pawn_queen: {},",
+        params.draw_scales.no_pawn_queen
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    no_pawn_rook: {},",
+        params.draw_scales.no_pawn_rook
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    no_pawn_rook_vs_queen: {},",
+        params.draw_scales.no_pawn_rook_vs_queen
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    no_pawn_minor: {},",
+        params.draw_scales.no_pawn_minor
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    opposite_bishops: {},",
+        fmt_i32_array(&params.draw_scales.opposite_bishops)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    minor_low_pawn: {},",
+        fmt_i32_array(&params.draw_scales.minor_low_pawn)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "    rook_vs_rook: {},",
+        fmt_i32_array(&params.draw_scales.rook_vs_rook)
+    )
+    .unwrap();
+    writeln!(&mut out, "}};").unwrap();
     writeln!(&mut out).unwrap();
 
     writeln!(&mut out, "// Piece square tables").unwrap();

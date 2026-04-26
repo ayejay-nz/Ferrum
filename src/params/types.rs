@@ -4,6 +4,18 @@ use crate::params::values::*;
 pub type PST = [Score; 64];
 
 #[derive(Copy, Clone, Debug)]
+pub struct DrawScales {
+    pub knn_vs_k: i32,
+    pub no_pawn_queen: i32,
+    pub no_pawn_rook: i32,
+    pub no_pawn_rook_vs_queen: i32,
+    pub no_pawn_minor: i32,
+    pub opposite_bishops: [i32; 5],
+    pub minor_low_pawn: [i32; 8],
+    pub rook_vs_rook: [i32; 7],
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Params {
     pub pawn_pst: PST,
     pub knight_pst: PST,
@@ -76,6 +88,8 @@ pub struct Params {
     pub bishop_mobility: [Score; 14],
     pub rook_mobility: [Score; 15],
     pub queen_mobility: [Score; 28],
+
+    pub draw_scales: DrawScales,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -166,6 +180,8 @@ pub const DEFAULT_PARAMS: Params = Params {
     bishop_mobility: BISHOP_MOBILITY,
     rook_mobility: ROOK_MOBILITY,
     queen_mobility: QUEEN_MOBILITY,
+
+    draw_scales: DRAW_SCALES,
 };
 
 pub const DEFAULT_LAZY_PARAMS: LazyParams = LazyParams {
