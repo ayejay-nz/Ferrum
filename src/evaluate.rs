@@ -3,7 +3,7 @@ use std::ops::{Add, Div, Mul};
 use crate::{
     bitboard::{Bitboard, Bitboards, bitboards},
     endgame::scale_endgame,
-    params::{DEFAULT_LAZY_PARAMS, DEFAULT_PARAMS, LazyParams, PST, Params},
+    params::{DEFAULT_PARAMS, LazyParams, PST, Params},
     position::Position,
     types::{Black, Colour, Direction, Piece, Side, Square, White},
 };
@@ -14,17 +14,25 @@ pub const NO_EVAL: i16 = i16::MIN;
 
 const PHASE_WEIGHTS: [u32; 6] = [0, 1, 1, 2, 4, 0];
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub struct Score {
     pub mg: Eval,
     pub eg: Eval,
 }
 
 impl Score {
-    fn add<S: Side>(&mut self, score: Score) {
+    #[inline(always)]
+    pub fn add<S: Side>(&mut self, score: Score) {
         let sign = if S::IS_WHITE { 1 } else { -1 };
         self.mg += sign * score.mg;
         self.eg += sign * score.eg;
+    }
+
+    #[inline(always)]
+    pub fn sub<S: Side>(&mut self, score: Score) {
+        let sign = if S::IS_WHITE { 1 } else { -1 };
+        self.mg -= sign * score.mg;
+        self.eg -= sign * score.eg;
     }
 }
 
@@ -146,12 +154,12 @@ impl EvalInfo {
 }
 
 #[inline(always)]
-const fn phase_weight(piece: Piece) -> u32 {
+pub const fn phase_weight(piece: Piece) -> u32 {
     PHASE_WEIGHTS[piece.idx()]
 }
 
 #[inline(always)]
-const fn relative_square<S: Side>(sq: Square) -> usize {
+pub const fn relative_square<S: Side>(sq: Square) -> usize {
     match S::COLOUR {
         Colour::Black => sq.idx(),
         Colour::White => sq.idx() ^ 56,
@@ -775,7 +783,6 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
 
     let mut score = Score::default();
     let mut info = EvalInfo::init(pos, bbs);
-    let phase = game_phase(pos);
 
     evaluate_pawns::<White>(pos, &mut score, &mut info, params);
     evaluate_pawns::<Black>(pos, &mut score, &mut info, params);
@@ -798,7 +805,7 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     evaluate_king_safety::<White>(pos, &mut score, &mut info, params);
     evaluate_king_safety::<Black>(pos, &mut score, &mut info, params);
 
-    let eval = taper(score, phase, pos.side_to_move);
+    let eval = taper(score, pos.game_phase as i32, pos.side_to_move);
     scale_endgame(pos, eval, &info, params)
 }
 
@@ -815,8 +822,9 @@ fn lazy_piece_terms<S: Side>(mut bb: Bitboard, value: Option<Score>, pst: &PST, 
     }
 }
 
+#[inline(always)]
 pub fn lazy_evaluate(pos: &Position) -> Eval {
-    lazy_evaluate_with(pos, &DEFAULT_LAZY_PARAMS)
+    taper(pos.lazy_score, pos.game_phase as i32, pos.side_to_move)
 }
 
 pub fn lazy_evaluate_with(pos: &Position, params: &LazyParams) -> Eval {
