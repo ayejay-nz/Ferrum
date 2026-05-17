@@ -1,4 +1,7 @@
-use crate::{evaluate::Score, params::PST};
+use crate::{
+    evaluate::Score,
+    params::{DrawScales, PST},
+};
 
 macro_rules! s {
     ($mg:literal, $eg:literal) => {
