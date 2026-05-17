@@ -459,6 +459,24 @@ pub fn render_full_params(label: &str, theta: &[i32], loss: f64) -> String {
     )
     .unwrap();
     writeln!(&mut out, "}};").unwrap();
+    writeln!(
+        &mut out,
+        "pub const ROOK_BEHIND_PASSER: Score = {};",
+        fmt_score(params.rook_behind_passer)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const QUEEN_BEHIND_PASSER: Score = {};",
+        fmt_score(params.queen_behind_passer)
+    )
+    .unwrap();
+    writeln!(
+        &mut out,
+        "pub const TEMPO_BONUS: i32 = {};",
+        params.tempo_bonus
+    )
+    .unwrap();
     writeln!(&mut out).unwrap();
 
     writeln!(&mut out, "// Piece square tables").unwrap();

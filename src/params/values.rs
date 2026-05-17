@@ -9,7 +9,7 @@ macro_rules! s {
     };
 }
 
-pub const PARAM_COUNT: usize = 60;
+pub const PARAM_COUNT: usize = 71;
 pub const LAZY_PARAM_COUNT: usize = 11;
 
 pub const PIECE_VALUES: [Score; 5] = [
@@ -77,6 +77,7 @@ pub const ROOK_SEMI_OPEN_FILE: Score = s!(16, 10);
 pub const ROOK_ON_SEVENTH: Score = s!(8, 10);
 pub const ROOK_ON_QUEEN_FILE: Score = s!(6, 28);
 pub const CONNECTED_DOUBLED_ROOKS: Score = s!(10, 19);
+pub const ROOK_BEHIND_PASSER: Score = s!(13, 15);
 
 pub const KING_ON_SEMI_OPEN_FILE: Score = s!(-14, 21);
 pub const KING_ON_OPEN_FILE: Score = s!(-61, -7);
@@ -85,6 +86,7 @@ pub const KING_PAWN_SHIELD_DISTANCE: [Score; 4] =
 pub const KING_SHIELD_MISSING_PAWN: Score = s!(-21, 0);
 pub const QUEEN_UNDEVELOPED_PIECE_PUNISHMENT: Score = s!(-8, 0);
 pub const QUEEN_UNMOVED_KING_PUNISHMENT: Score = s!(-6, 0);
+pub const QUEEN_BEHIND_PASSER: Score = s!(21, 5);
 
 pub const PAWN_THREAT_MINOR: Score = s!(18, 6);
 pub const PAWN_THREAT_MAJOR: Score = s!(34, 10);
@@ -170,6 +172,7 @@ pub const DRAW_SCALES: DrawScales = DrawScales {
     minor_low_pawn: [108, 37, 43, 107, 75, 93, 97, 111],
     rook_vs_rook: [95, 85, 93, 128, 128, 128, 128],
 };
+pub const TEMPO_BONUS: i32 = 3;
 
 // Adjustment values based on the number of pawns left
 pub const KNIGHT_ADJ: [Score; 9] = [

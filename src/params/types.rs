@@ -44,9 +44,11 @@ pub struct Params {
     pub rook_on_seventh: Score,
     pub rook_on_queen_file: Score,
     pub connected_doubled_rooks: Score,
+    pub rook_behind_passer: Score,
 
     pub queen_undeveloped_piece_punishment: Score,
     pub queen_unmoved_king_punishment: Score,
+    pub queen_behind_passer: Score,
 
     pub pawn_threat_minor: Score,
     pub pawn_threat_major: Score,
@@ -90,6 +92,7 @@ pub struct Params {
     pub queen_mobility: [Score; 28],
 
     pub draw_scales: DrawScales,
+    pub tempo_bonus: i32,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -136,9 +139,11 @@ pub const DEFAULT_PARAMS: Params = Params {
     rook_on_seventh: ROOK_ON_SEVENTH,
     rook_on_queen_file: ROOK_ON_QUEEN_FILE,
     connected_doubled_rooks: CONNECTED_DOUBLED_ROOKS,
+    rook_behind_passer: ROOK_BEHIND_PASSER,
 
     queen_undeveloped_piece_punishment: QUEEN_UNDEVELOPED_PIECE_PUNISHMENT,
     queen_unmoved_king_punishment: QUEEN_UNMOVED_KING_PUNISHMENT,
+    queen_behind_passer: QUEEN_BEHIND_PASSER,
 
     pawn_threat_minor: PAWN_THREAT_MINOR,
     pawn_threat_major: PAWN_THREAT_MAJOR,
@@ -182,6 +187,7 @@ pub const DEFAULT_PARAMS: Params = Params {
     queen_mobility: QUEEN_MOBILITY,
 
     draw_scales: DRAW_SCALES,
+    tempo_bonus: TEMPO_BONUS,
 };
 
 pub const DEFAULT_LAZY_PARAMS: LazyParams = LazyParams {

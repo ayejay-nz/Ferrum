@@ -281,6 +281,24 @@ fn evaluate_pawns<S: Side>(
 
         if passed {
             score.add::<S>(params.passed_pawn[rel_rank as usize - 1]);
+
+            // Rook/queen behind passed pawn
+            let rear_occ = pos.occupancy[2] & (rear ^ sq_bb);
+
+            if !rear_occ.is_empty() {
+                let support = if S::IS_WHITE {
+                    rear_occ.msb()
+                } else {
+                    rear_occ.lsb()
+                };
+
+                let support_bb = support.bitboard();
+                if !(support_bb & pos.pieces[S::IDX][Piece::Rook.idx()]).is_empty() {
+                    score.add::<S>(params.rook_behind_passer);
+                } else if !(support_bb & pos.pieces[S::IDX][Piece::Queen.idx()]).is_empty() {
+                    score.add::<S>(params.queen_behind_passer);
+                }
+            }
         } else if candidate {
             score.add::<S>(params.candidate_passer[rel_rank as usize - 1]);
         }
@@ -806,7 +824,7 @@ pub fn evaluate_with(pos: &Position, params: &Params) -> Eval {
     evaluate_king_safety::<Black>(pos, &mut score, &mut info, params);
 
     let eval = taper(score, pos.game_phase as i32, pos.side_to_move);
-    scale_endgame(pos, eval, &info, params)
+    scale_endgame(pos, eval, &info, params) + params.tempo_bonus
 }
 
 fn lazy_piece_terms<S: Side>(mut bb: Bitboard, value: Option<Score>, pst: &PST, score: &mut Score) {
@@ -909,5 +927,5 @@ pub fn lazy_evaluate_with(pos: &Position, params: &LazyParams) -> Eval {
         &mut score,
     );
 
-    taper(score, phase, pos.side_to_move)
+    taper(score, phase, pos.side_to_move) + DEFAULT_PARAMS.tempo_bonus
 }

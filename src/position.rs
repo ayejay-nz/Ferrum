@@ -1,7 +1,7 @@
 use crate::{
     bitboard::{Bitboard, bitboards},
     evaluate::{Score, phase_weight, relative_square},
-    params::{DEFAULT_LAZY_PARAMS},
+    params::DEFAULT_LAZY_PARAMS,
     types::{
         Black, Castling, CastlingType, Colour, Direction, Mailbox, Move, Piece, PieceCode, Side,
         Square, White,

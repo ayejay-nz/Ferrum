@@ -210,6 +210,9 @@ impl TuningConfig for FullTuningConfig {
         push_i32_array(&mut out, &params.draw_scales.opposite_bishops);
         push_i32_array(&mut out, &params.draw_scales.minor_low_pawn);
         push_i32_array(&mut out, &params.draw_scales.rook_vs_rook);
+        push_score(&mut out, params.rook_behind_passer);
+        push_score(&mut out, params.queen_behind_passer);
+        push_i32(&mut out, params.tempo_bonus);
 
         out
     }
@@ -300,6 +303,9 @@ impl TuningConfig for FullTuningConfig {
                 minor_low_pawn: next_i32_array(&mut it),
                 rook_vs_rook: next_i32_array(&mut it),
             },
+            rook_behind_passer: next_score(&mut it),
+            queen_behind_passer: next_score(&mut it),
+            tempo_bonus: next_i32(&mut it),
         };
 
         debug_assert!(it.next().is_none());
@@ -377,6 +383,9 @@ impl TuningConfig for FullTuningConfig {
             draw_scale_opposite_bishops,
             draw_scale_minor_low_pawn,
             draw_scale_rook_vs_rook,
+            rook_behind_passer,
+            queen_behind_passer,
+            tempo_bonus,
         ] = self.meta;
 
         push_pawn_pst_bounds(&mut out, pawn_pst);
@@ -459,6 +468,9 @@ impl TuningConfig for FullTuningConfig {
         push_i32_array_bounds::<5>(&mut out, draw_scale_opposite_bishops);
         push_i32_array_bounds::<8>(&mut out, draw_scale_minor_low_pawn);
         push_i32_array_bounds::<7>(&mut out, draw_scale_rook_vs_rook);
+        push_score_bounds(&mut out, rook_behind_passer);
+        push_score_bounds(&mut out, queen_behind_passer);
+        push_i32_bounds(&mut out, tempo_bonus);
 
         out
     }
@@ -815,6 +827,9 @@ pub const DEFAULT_PARAM_META: [ParamMeta; PARAM_COUNT] = [
     m!(b!(16, 112), false),     // 65 - draw scale opposite bishops
     m!(b!(36, 116), false),     // 66 - draw scale minor low-pawn endings
     m!(b!(64, 128), false),     // 67 - draw scale rook vs rook endings
+    m!(b!(0, 40), false),       // 68 - rook behind passer
+    m!(b!(0, 30), false),       // 69 - queen behind passer
+    m!(b!(0, 30), false),       // 70 - tempo bonus
 ];
 
 #[rustfmt::skip]
