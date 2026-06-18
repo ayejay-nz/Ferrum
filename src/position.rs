@@ -1,6 +1,11 @@
 use crate::{
     bitboard::{Bitboard, bitboards},
-    types::{Castling, CastlingType, Colour, Direction, Mailbox, Move, Piece, PieceCode, Square},
+    evaluate::{Score, phase_weight, relative_square},
+    params::DEFAULT_LAZY_PARAMS,
+    types::{
+        Black, Castling, CastlingType, Colour, Direction, Mailbox, Move, Piece, PieceCode, Side,
+        Square, White,
+    },
     zobrist::{ZKey, ep_hashable},
 };
 
@@ -49,6 +54,8 @@ pub struct StateInfo {
     pub captured_piece: Option<Piece>,
     pub halfmove_clock: u8,
     pub fullmove_counter: u16,
+    pub lazy_score: Score,
+    pub game_phase: u8,
 }
 
 impl StateInfo {
@@ -60,6 +67,8 @@ impl StateInfo {
             captured_piece: None,
             halfmove_clock: 0,
             fullmove_counter: 0,
+            lazy_score: Score { mg: 0, eg: 0 },
+            game_phase: 0,
         }
     }
 
@@ -70,6 +79,8 @@ impl StateInfo {
         self.captured_piece = None;
         self.halfmove_clock = pos.halfmove_clock;
         self.fullmove_counter = pos.fullmove_counter;
+        self.lazy_score = pos.lazy_score;
+        self.game_phase = pos.game_phase;
     }
 }
 
@@ -89,6 +100,8 @@ pub struct Position {
     pub black_king_square: Square,
     pub castling_rights: Castling,
     pub halfmove_clock: u8,
+    pub lazy_score: Score,
+    pub game_phase: u8,
 }
 
 impl Position {
@@ -111,6 +124,8 @@ impl Position {
             black_king_square: Square::NONE,
             castling_rights: Castling::NONE,
             halfmove_clock: 0,
+            lazy_score: Score { mg: 0, eg: 0 },
+            game_phase: 0,
         }
     }
 
@@ -134,6 +149,72 @@ impl Position {
     }
 
     #[inline(always)]
+    fn add_lazy_piece<S: Side>(&mut self, piece: Piece, square: Square) {
+        let rel_sq = relative_square::<S>(square);
+
+        self.lazy_score.add::<S>(match piece {
+            Piece::Pawn => DEFAULT_LAZY_PARAMS.pawn_value + DEFAULT_LAZY_PARAMS.pawn_pst[rel_sq],
+            Piece::Knight => {
+                DEFAULT_LAZY_PARAMS.knight_value + DEFAULT_LAZY_PARAMS.knight_pst[rel_sq]
+            }
+            Piece::Bishop => {
+                DEFAULT_LAZY_PARAMS.bishop_value + DEFAULT_LAZY_PARAMS.bishop_pst[rel_sq]
+            }
+            Piece::Rook => DEFAULT_LAZY_PARAMS.rook_value + DEFAULT_LAZY_PARAMS.rook_pst[rel_sq],
+            Piece::Queen => DEFAULT_LAZY_PARAMS.queen_value + DEFAULT_LAZY_PARAMS.queen_pst[rel_sq],
+            Piece::King => DEFAULT_LAZY_PARAMS.king_pst[rel_sq],
+        });
+
+        self.game_phase += phase_weight(piece) as u8;
+    }
+
+    #[inline(always)]
+    fn remove_lazy_piece<S: Side>(&mut self, piece: Piece, square: Square) {
+        let rel_sq = relative_square::<S>(square);
+
+        self.lazy_score.sub::<S>(match piece {
+            Piece::Pawn => DEFAULT_LAZY_PARAMS.pawn_value + DEFAULT_LAZY_PARAMS.pawn_pst[rel_sq],
+            Piece::Knight => {
+                DEFAULT_LAZY_PARAMS.knight_value + DEFAULT_LAZY_PARAMS.knight_pst[rel_sq]
+            }
+            Piece::Bishop => {
+                DEFAULT_LAZY_PARAMS.bishop_value + DEFAULT_LAZY_PARAMS.bishop_pst[rel_sq]
+            }
+            Piece::Rook => DEFAULT_LAZY_PARAMS.rook_value + DEFAULT_LAZY_PARAMS.rook_pst[rel_sq],
+            Piece::Queen => DEFAULT_LAZY_PARAMS.queen_value + DEFAULT_LAZY_PARAMS.queen_pst[rel_sq],
+            Piece::King => DEFAULT_LAZY_PARAMS.king_pst[rel_sq],
+        });
+
+        self.game_phase -= phase_weight(piece) as u8;
+    }
+
+    fn refresh_lazy_eval(&mut self) {
+        self.lazy_score = Score { mg: 0, eg: 0 };
+        self.game_phase = 0;
+
+        for piece in [
+            Piece::Pawn,
+            Piece::Knight,
+            Piece::Bishop,
+            Piece::Rook,
+            Piece::Queen,
+            Piece::King,
+        ] {
+            let mut white = self.pieces[Colour::White.idx()][piece.idx()];
+            while !white.is_empty() {
+                let sq = white.pop_lsb();
+                self.add_lazy_piece::<White>(piece, sq);
+            }
+
+            let mut black = self.pieces[Colour::Black.idx()][piece.idx()];
+            while !black.is_empty() {
+                let sq = black.pop_lsb();
+                self.add_lazy_piece::<Black>(piece, sq);
+            }
+        }
+    }
+
+    #[inline(always)]
     pub fn place_piece(&mut self, colour: Colour, piece: Piece, square: Square) {
         self.pieces[colour.idx()][piece.idx()].set_square(square);
         self.occupancy[colour.idx()].set_square(square);
@@ -147,6 +228,7 @@ impl Position {
             match colour {
                 Colour::White => self.white_king_square = square,
                 Colour::Black => self.black_king_square = square,
+                _ => unreachable!(),
             }
         }
     }
@@ -167,6 +249,8 @@ impl Position {
         state.halfmove_clock = self.halfmove_clock;
         state.fullmove_counter = self.fullmove_counter;
         state.captured_piece = None;
+        state.lazy_score = self.lazy_score;
+        state.game_phase = self.game_phase;
 
         // Unhash old en passant file if it exists
         if ep_hashable(&self.mailbox, self.ep_square, self.side_to_move) {
@@ -209,6 +293,12 @@ impl Position {
             self.zkey
                 .toggle_piece(PieceCode::new(them, captured_piece), capture_square);
             state.captured_piece = Some(captured_piece);
+
+            match them {
+                Colour::White => self.remove_lazy_piece::<White>(captured_piece, capture_square),
+                Colour::Black => self.remove_lazy_piece::<Black>(captured_piece, capture_square),
+                _ => unreachable!(),
+            }
         }
 
         // Move the piece
@@ -216,6 +306,18 @@ impl Position {
         self.zkey.toggle_piece(PieceCode::new(us, piece), from);
         self.place_piece(us, to_piece, to);
         self.zkey.toggle_piece(PieceCode::new(us, to_piece), to);
+
+        match us {
+            Colour::White => {
+                self.remove_lazy_piece::<White>(piece, from);
+                self.add_lazy_piece::<White>(to_piece, to);
+            }
+            Colour::Black => {
+                self.remove_lazy_piece::<Black>(piece, from);
+                self.add_lazy_piece::<Black>(to_piece, to);
+            }
+            _ => unreachable!(),
+        }
 
         // Move rook if it was a castling move
         if let Some(side) = mv.castle_type() {
@@ -226,6 +328,18 @@ impl Position {
             self.place_piece(us, Piece::Rook, rook_to);
             self.zkey
                 .toggle_piece(PieceCode::new(us, Piece::Rook), rook_to);
+
+            match us {
+                Colour::White => {
+                    self.remove_lazy_piece::<White>(Piece::Rook, rook_from);
+                    self.add_lazy_piece::<White>(Piece::Rook, rook_to);
+                }
+                Colour::Black => {
+                    self.remove_lazy_piece::<Black>(Piece::Rook, rook_from);
+                    self.add_lazy_piece::<Black>(Piece::Rook, rook_to);
+                }
+                _ => unreachable!(),
+            }
         }
 
         // Pawn move resets halfmove clock
@@ -261,6 +375,9 @@ impl Position {
         self.fullmove_counter = prev.fullmove_counter;
         self.castling_rights = prev.castling_rights;
         self.ep_square = prev.ep_square;
+
+        self.lazy_score = prev.lazy_score;
+        self.game_phase = prev.game_phase;
 
         let colour = self.side_to_move;
         let from = mv.from();
@@ -425,6 +542,17 @@ impl Position {
             | bbs.king_attacks(sq) & self.pieces[them.idx()][Piece::King.idx()];
     }
 
+    // Compute a bitboard of all attackers to a square of the specified side excluding king attacks
+    pub fn attackers_to_by(&self, sq: Square, attacker: Colour, occ: Bitboard) -> Bitboard {
+        let bbs = bitboards();
+
+        (bbs.bishop_attacks(sq, occ) & self.bishop_sliders(attacker))
+            | (bbs.rook_attacks(sq, occ) & self.rook_sliders(attacker))
+            | (bbs.knight_attacks(sq) & self.pieces[attacker.idx()][Piece::Knight.idx()])
+            | (bbs.pawn_attacks(sq, attacker.opposite())
+                & self.pieces[attacker.idx()][Piece::Pawn.idx()])
+    }
+
     /// Check if a square is attacked by the opponent
     #[inline(always)]
     pub fn attackers_to_exist(&self, sq: Square, occ: Bitboard) -> bool {
@@ -560,6 +688,7 @@ impl Position {
                         (Colour::White, CastlingType::Queenside) => Castling::WHITE_OOO,
                         (Colour::Black, CastlingType::Kingside) => Castling::BLACK_OO,
                         (Colour::Black, CastlingType::Queenside) => Castling::BLACK_OOO,
+                        _ => unreachable!(),
                     };
 
                     return self.can_castle(castling_flag) && !self.castling_impeded(castling_flag);
@@ -754,8 +883,8 @@ impl Position {
         };
 
         // Half/fullmove count
-        position.halfmove_clock = fen_parts[4].parse::<u8>().unwrap();
-        position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap();
+        position.halfmove_clock = fen_parts[4].parse::<u8>().unwrap_or(0);
+        position.fullmove_counter = fen_parts[5].parse::<u16>().unwrap_or(0);
 
         // Zobrist key
         position.zkey = ZKey::compute_zobrist_key(
@@ -764,6 +893,8 @@ impl Position {
             position.castling_rights,
             position.ep_square,
         );
+
+        position.refresh_lazy_eval();
 
         position.update_pins(Colour::White);
         position.update_pins(Colour::Black);

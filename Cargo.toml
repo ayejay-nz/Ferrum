@@ -5,3 +5,10 @@ edition = "2024"
 
 [dependencies]
 bitflags = "2.11.0"
+rayon = "1.11.0"
+rand = "0.10.0"
+ctrlc = "3.4"
+
+# [profile.release]
+# debug = true
+# strip = false

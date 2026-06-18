@@ -141,7 +141,7 @@ impl MovePicker {
 
                 self.moves
                     .as_mut_slice()
-                    .sort_unstable_by_key(|&mv| Reverse(ordering.score_noisy(pos, mv)));
+                    .sort_unstable_by_key(|&mv| Reverse(OrderingTables::score_noisy(pos, mv)));
                 self.next(pos, ordering)
             }
             Stage::Noisy => {
@@ -242,7 +242,7 @@ impl MovePicker {
 
                 self.moves
                     .as_mut_slice()
-                    .sort_unstable_by_key(|&mv| Reverse(ordering.score_noisy(pos, mv)));
+                    .sort_unstable_by_key(|&mv| Reverse(OrderingTables::score_noisy(pos, mv)));
                 self.next(pos, ordering)
             }
             Stage::QSearch => {

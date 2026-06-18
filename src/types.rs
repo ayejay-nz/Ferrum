@@ -173,6 +173,7 @@ pub const RANK_8: u64 = RANK_1 << 56;
 pub enum Colour {
     White = 0,
     Black = 1,
+    Both = 2,
 }
 
 impl Colour {
@@ -186,8 +187,39 @@ impl Colour {
         match self {
             Self::White => Self::Black,
             Self::Black => Self::White,
+            Self::Both => Self::Both,
         }
     }
+}
+
+pub trait Side {
+    type Opp: Side;
+
+    const COLOUR: Colour;
+    const IDX: usize;
+    const THEM: usize;
+    const IS_WHITE: bool;
+}
+
+pub struct White;
+pub struct Black;
+
+impl Side for White {
+    type Opp = Black;
+
+    const COLOUR: Colour = Colour::White;
+    const IDX: usize = 0;
+    const THEM: usize = 1;
+    const IS_WHITE: bool = true;
+}
+
+impl Side for Black {
+    type Opp = White;
+
+    const COLOUR: Colour = Colour::Black;
+    const IDX: usize = 1;
+    const THEM: usize = 0;
+    const IS_WHITE: bool = false;
 }
 
 #[repr(u8)]
@@ -412,6 +444,7 @@ impl Castling {
             (Colour::White, CastlingType::Queenside) => (Square::A1, Square::D1),
             (Colour::Black, CastlingType::Kingside) => (Square::H8, Square::F8),
             (Colour::Black, CastlingType::Queenside) => (Square::A8, Square::D8),
+            _ => unreachable!(),
         }
     }
 
@@ -692,6 +725,14 @@ mod tests {
         let black_king = PieceCode::from_char('k');
         assert_eq!(white_pawn, Some(PieceCode::new(Colour::White, Piece::Pawn)));
         assert_eq!(black_king, Some(PieceCode::new(Colour::Black, Piece::King)));
+    }
+
+    #[test]
+    fn piece_code_to_char_is_correct() {
+        let white_pawn = PieceCode::from_char('P').unwrap();
+        let black_queen = PieceCode::from_char('q').unwrap();
+        assert_eq!(white_pawn.to_char(), 'P');
+        assert_eq!(black_queen.to_char(), 'q');
     }
 
     // --- Mailbox ---

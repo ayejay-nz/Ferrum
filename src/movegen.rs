@@ -185,6 +185,7 @@ fn generate_castling_moves(pos: &Position, moves: &mut MoveList) {
     let (ks_right, qs_right) = match us {
         Colour::White => (Castling::WHITE_OO, Castling::WHITE_OOO),
         Colour::Black => (Castling::BLACK_OO, Castling::BLACK_OOO),
+        _ => unreachable!(),
     };
 
     if pos.can_castle(ks_right) && !pos.castling_impeded(ks_right) {
